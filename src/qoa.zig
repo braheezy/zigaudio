@@ -1,4 +1,5 @@
 const std = @import("std");
+const api = @import("root.zig");
 
 const min_filesize = 16;
 const max_channels = 8;
@@ -228,4 +229,61 @@ pub fn decodeHeader(bytes: []const u8) !Decoder {
         .sample_rate = sample_rate,
         .sample_count = samples,
     };
+}
+
+// Adapter that exposes QOA as an api.FormatVTable entry
+pub fn vtable() api.FormatVTable {
+    return .{
+        .id = .qoa,
+        .name = "qoa",
+        .probe = qoa_probe,
+        .info = qoa_info,
+        .decode_from_bytes = qoa_decode_from_bytes,
+        .encode = qoa_encode,
+    };
+}
+
+fn qoa_probe(bytes: []const u8) bool {
+    _ = decodeHeader(bytes) catch return false;
+    return true;
+}
+
+fn qoa_info(bytes: []const u8) api.ReadError!api.AudioInfo {
+    const hdr = decodeHeader(bytes) catch return error.InvalidFormat;
+    return .{
+        .sample_rate = hdr.sample_rate,
+        .channels = @intCast(hdr.channels),
+        .sample_type = .i16,
+        .total_frames = hdr.sample_count,
+    };
+}
+
+fn qoa_decode_from_bytes(allocator: std.mem.Allocator, bytes: []const u8) api.ReadError!api.Audio {
+    const result = decode(allocator, bytes) catch |e| switch (e) {
+        error.InvalidMagicNumber, error.InvalidHeader, error.InvalidFileSize, error.InvalidSamples, error.InvalidFrameHeader, error.FrameTooSmall => return error.InvalidFormat,
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+    defer allocator.free(result.samples);
+
+    const ch: u8 = @intCast(result.decoder.channels);
+    const total_samples: usize = @as(usize, result.decoder.sample_count) * @as(usize, result.decoder.channels);
+    const total_bytes: usize = total_samples * @sizeOf(i16);
+
+    const data = try allocator.alloc(u8, total_bytes);
+    errdefer allocator.free(data);
+    const src_bytes = std.mem.sliceAsBytes(result.samples);
+    std.mem.copyForwards(u8, data, src_bytes);
+
+    return .{
+        .params = .{ .sample_rate = result.decoder.sample_rate, .channels = ch, .sample_type = .i16 },
+        .data = data,
+        .allocator = allocator,
+    };
+}
+
+fn qoa_encode(_writer: *std.Io.Writer, _audio: *const api.Audio, _options: api.EncodeOptions) api.WriteError!void {
+    _ = _writer;
+    _ = _audio;
+    _ = _options;
+    return error.Unsupported;
 }

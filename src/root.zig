@@ -1,5 +1,5 @@
 const std = @import("std");
-const qoa = @import("qoa.zig");
+const formats = @import("formats.zig");
 
 pub const Error = error{
     Unsupported,
@@ -112,12 +112,12 @@ pub const Audio = struct {
 pub const FormatId = enum { unknown, qoa };
 
 // Decoder/Encoder vtable. New formats register implementations here.
-const ProbeFn = *const fn (bytes: []const u8) bool;
-const InfoFn = *const fn (bytes: []const u8) ReadError!AudioInfo;
-const DecodeBytesFn = *const fn (allocator: std.mem.Allocator, bytes: []const u8) ReadError!Audio;
-const EncodeFn = *const fn (writer: *std.Io.Writer, audio: *const Audio, options: EncodeOptions) WriteError!void;
+pub const ProbeFn = *const fn (bytes: []const u8) bool;
+pub const InfoFn = *const fn (bytes: []const u8) ReadError!AudioInfo;
+pub const DecodeBytesFn = *const fn (allocator: std.mem.Allocator, bytes: []const u8) ReadError!Audio;
+pub const EncodeFn = *const fn (writer: *std.Io.Writer, audio: *const Audio, options: EncodeOptions) WriteError!void;
 
-const FormatVTable = struct {
+pub const FormatVTable = struct {
     id: FormatId,
     name: []const u8,
     probe: ProbeFn,
@@ -126,41 +126,7 @@ const FormatVTable = struct {
     encode: EncodeFn,
 };
 
-// QOA adapter implementing the vtable using functions from qoa.zig
-fn qoa_probe(bytes: []const u8) bool {
-    // Treat only canonical header errors as non-match; anything else means not qoa
-    _ = qoa.decodeHeader(bytes) catch return false;
-    return true;
-}
-
-fn qoa_info(bytes: []const u8) ReadError!AudioInfo {
-    const hdr = qoa.decodeHeader(bytes) catch return error.InvalidFormat;
-    // qoa decoder produces i16 PCM
-    return .{
-        .sample_rate = hdr.sample_rate,
-        .channels = @intCast(hdr.channels),
-        .sample_type = .i16,
-        .total_frames = hdr.sample_count,
-    };
-}
-
-fn qoa_decode_from_bytes(allocator: std.mem.Allocator, bytes: []const u8) ReadError!Audio {
-    return decodeQoaFromBytes(allocator, bytes) catch |e| switch (e) {
-        error.InvalidMagicNumber, error.InvalidHeader, error.InvalidFileSize, error.InvalidSamples, error.InvalidFrameHeader, error.FrameTooSmall => return error.InvalidFormat,
-        error.OutOfMemory => return error.OutOfMemory,
-    };
-}
-
-fn qoa_encode(_writer: *std.Io.Writer, _audio: *const Audio, _options: EncodeOptions) WriteError!void {
-    _ = _writer;
-    _ = _audio;
-    _ = _options;
-    return error.Unsupported;
-}
-
-const known_formats = [_]FormatVTable{
-    .{ .id = .qoa, .name = "qoa", .probe = qoa_probe, .info = qoa_info, .decode_from_bytes = qoa_decode_from_bytes, .encode = qoa_encode },
-};
+const known_formats = formats.defaultFormats();
 
 pub fn probe(reader: *std.Io.Reader) ReadError!FormatId {
     // Read a small prefix for probing, but fall back to full file if small
@@ -225,23 +191,4 @@ pub fn writeToPath(path: []const u8, audio: *const Audio, options: EncodeOptions
     try w.flush();
 }
 
-fn decodeQoaFromBytes(allocator: std.mem.Allocator, bytes: []const u8) !Audio {
-    const result = try qoa.decode(allocator, bytes);
-    defer allocator.free(result.samples);
-
-    // Prepare Audio with i16 interleaved samples.
-    const ch: u8 = @intCast(result.decoder.channels);
-    const total_samples: usize = @as(usize, result.decoder.sample_count) * @as(usize, result.decoder.channels);
-    const total_bytes: usize = total_samples * @sizeOf(i16);
-
-    const data = try allocator.alloc(u8, total_bytes);
-    errdefer allocator.free(data);
-    const src_bytes = std.mem.sliceAsBytes(result.samples);
-    std.mem.copyForwards(u8, data, src_bytes);
-
-    return .{
-        .params = .{ .sample_rate = result.decoder.sample_rate, .channels = ch, .sample_type = .i16 },
-        .data = data,
-        .allocator = allocator,
-    };
-}
+// no format-specific code beyond this point; formats live in their own modules

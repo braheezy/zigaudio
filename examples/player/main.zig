@@ -40,9 +40,9 @@ pub fn main() !void {
     };
     defer audio.deinit();
 
-    std.debug.print("frames: {}\n", .{audio.frameCount()});
-    std.debug.print("samples: {}\n", .{audio.sampleCount()});
-    std.debug.print("duration_s: {d:.3}\n", .{audio.durationSeconds()});
+    std.debug.print("frames: {d}\n", .{audio.frameCount()});
+    std.debug.print("samples: {d}\n", .{audio.sampleCount()});
+    std.debug.print("duration: {d:.2}s\n", .{audio.durationSeconds()});
 
     const options = zoto.ContextOptions{
         .sample_rate = audio.params.sample_rate,
