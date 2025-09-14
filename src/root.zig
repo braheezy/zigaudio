@@ -148,33 +148,31 @@ pub const ManagedAudioStream = struct {
     pub fn deinit(self: *ManagedAudioStream) void {
         self.decoder.deinit();
         self.allocator.free(self.buffer);
-        // reader contains no additional owned state beyond buffer
     }
 };
 
 pub const FormatId = enum { unknown, qoa };
 
 // Decoder/Encoder vtable. New formats register implementations here.
-pub const ProbeReaderFn = *const fn (stream: *io.ReadStream) ReadError!bool;
+pub const ProbeFn = *const fn (stream: *io.ReadStream) ReadError!bool;
 pub const InfoReaderFn = *const fn (stream: *io.ReadStream) ReadError!AudioInfo;
 pub const DecodeBytesFn = *const fn (allocator: std.mem.Allocator, bytes: []const u8) ReadError!Audio;
 pub const EncodeFn = *const fn (writer: *std.Io.Writer, audio: *const Audio, options: EncodeOptions) WriteError!void;
 
 pub const FormatVTable = struct {
     id: FormatId,
-    name: []const u8,
-    probe_reader: ProbeReaderFn,
+    probe: ProbeFn,
     info_reader: InfoReaderFn,
     decode_from_bytes: DecodeBytesFn,
     encode: EncodeFn,
 };
 
-const known_formats = formats.defaultFormats();
+const known_formats = formats.supported_formats;
 
 pub fn probe(reader: *std.Io.Reader) ReadError!FormatId {
     for (known_formats) |fmt| {
         var s = io.ReadStream{ .memory = reader.* };
-        const is_match = fmt.probe_reader(&s) catch |e| switch (e) {
+        const is_match = fmt.probe(&s) catch |e| switch (e) {
             error.EndOfStream => false,
             else => return error.ReadFailed,
         };
@@ -187,7 +185,7 @@ pub fn decode(allocator: std.mem.Allocator, reader: *std.Io.Reader) ReadError!Au
     var selected: ?FormatVTable = null;
     for (known_formats) |fmt| {
         var s = io.ReadStream{ .memory = reader.* };
-        const is_match = fmt.probe_reader(&s) catch |e| switch (e) {
+        const is_match = fmt.probe(&s) catch |e| switch (e) {
             error.EndOfStream => false,
             else => return error.ReadFailed,
         };
@@ -285,7 +283,7 @@ pub fn openStreamDecoder(allocator: std.mem.Allocator, reader: *io.ReadStream) R
     // Select format using streaming probe
     var selected: ?FormatVTable = null;
     for (known_formats) |fmt| {
-        const is_match = fmt.probe_reader(reader) catch |e| switch (e) {
+        const is_match = fmt.probe(reader) catch |e| switch (e) {
             error.EndOfStream => false,
             else => return error.ReadFailed,
         };
@@ -434,4 +432,14 @@ pub fn fromPath(allocator: std.mem.Allocator, path: []const u8) ReadError!Manage
         .decoder = dec,
         .info = dec.info,
     };
+}
+
+pub fn fromMemory(allocator: std.mem.Allocator, bytes: []const u8) ReadError!ManagedAudioStream {
+    // Allocate internal buffer for output Reader interface
+    const buf = try allocator.alloc(u8, DEFAULT_STREAM_BUFFER_SIZE);
+    errdefer allocator.free(buf);
+    var stream = io.ReadStream.initMemory(bytes);
+    const dec = try openStreamDecoder(allocator, &stream);
+    const reader = AudioReader.init(dec, buf);
+    return .{ .allocator = allocator, .reader = reader, .buffer = buf, .decoder = dec, .info = dec.info };
 }

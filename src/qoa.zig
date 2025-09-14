@@ -233,16 +233,13 @@ pub fn decodeHeader(bytes: []const u8) !Decoder {
 }
 
 // Adapter that exposes QOA as an api.FormatVTable entry
-pub fn vtable() api.FormatVTable {
-    return .{
-        .id = .qoa,
-        .name = "qoa",
-        .probe_reader = probe_reader,
-        .info_reader = info_reader,
-        .decode_from_bytes = qoa_decode_from_bytes,
-        .encode = qoa_encode,
-    };
-}
+pub const vtable: api.FormatVTable = .{
+    .id = .qoa,
+    .probe = probe_reader,
+    .info_reader = info_reader,
+    .decode_from_bytes = qoa_decode_from_bytes,
+    .encode = qoa_encode,
+};
 
 fn info_reader(stream: *io.ReadStream) api.ReadError!api.AudioInfo {
     const r = stream.reader();

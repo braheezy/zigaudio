@@ -23,20 +23,46 @@ pub fn main() !void {
     // pop program name
     _ = args.next();
 
-    const audio_path = args.next() orelse {
-        std.debug.print("usage: player <path>\n", .{});
+    var play_from_memory: bool = false;
+    var audio_path: ?[]const u8 = null;
+    while (args.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--mem")) {
+            play_from_memory = true;
+        } else if (audio_path == null) {
+            audio_path = arg;
+        }
+    }
+    const embedded: []const u8 = @embedFile("fanfare_heartcontainer.qoa");
+    if (!play_from_memory and audio_path == null) {
+        std.debug.print("usage: player [--mem] <path>\n", .{});
         return;
-    };
+    }
 
-    var stream = zigaudio.fromPath(allocator, audio_path) catch |e| switch (e) {
-        error.Unsupported => {
-            std.debug.print("unsupported format: {s}\n", .{audio_path});
-            return;
-        },
-        else => {
-            std.debug.print("error: {}\n", .{e});
-            return;
-        },
+    var stream = blk: {
+        if (play_from_memory) {
+            break :blk zigaudio.fromMemory(allocator, embedded) catch |e| switch (e) {
+                error.Unsupported => {
+                    std.debug.print("unsupported format (embedded)\n", .{});
+                    return;
+                },
+                else => {
+                    std.debug.print("error: {}\n", .{e});
+                    return;
+                },
+            };
+        } else {
+            const path = audio_path.?;
+            break :blk zigaudio.fromPath(allocator, path) catch |e| switch (e) {
+                error.Unsupported => {
+                    std.debug.print("unsupported format: {s}\n", .{path});
+                    return;
+                },
+                else => {
+                    std.debug.print("error: {}\n", .{e});
+                    return;
+                },
+            };
+        }
     };
     defer stream.deinit();
 

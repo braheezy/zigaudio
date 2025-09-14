@@ -1,8 +1,6 @@
 const api = @import("root.zig");
 const qoa = @import("qoa.zig");
 
-pub fn defaultFormats() []const api.FormatVTable {
-    return &[_]api.FormatVTable{
-        qoa.vtable(),
-    };
-}
+pub const supported_formats: []const api.FormatVTable = &[_]api.FormatVTable{
+    qoa.vtable,
+};
