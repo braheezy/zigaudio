@@ -1,5 +1,6 @@
 const std = @import("std");
 const api = @import("root.zig");
+const io = @import("io.zig");
 
 const min_filesize = 16;
 const max_channels = 8;
@@ -236,26 +237,36 @@ pub fn vtable() api.FormatVTable {
     return .{
         .id = .qoa,
         .name = "qoa",
-        .probe = qoa_probe,
-        .info = qoa_info,
+        .probe_reader = probe_reader,
+        .info_reader = info_reader,
         .decode_from_bytes = qoa_decode_from_bytes,
         .encode = qoa_encode,
     };
 }
 
-fn qoa_probe(bytes: []const u8) bool {
-    _ = decodeHeader(bytes) catch return false;
-    return true;
-}
-
-fn qoa_info(bytes: []const u8) api.ReadError!api.AudioInfo {
-    const hdr = decodeHeader(bytes) catch return error.InvalidFormat;
+fn info_reader(stream: *io.ReadStream) api.ReadError!api.AudioInfo {
+    const r = stream.reader();
+    const header = r.peek(16) catch |e| switch (e) {
+        error.EndOfStream => return error.InvalidFormat,
+        else => return error.ReadFailed,
+    };
+    const hdr = decodeHeader(header) catch return error.InvalidFormat;
     return .{
         .sample_rate = hdr.sample_rate,
         .channels = @intCast(hdr.channels),
         .sample_type = .i16,
         .total_frames = hdr.sample_count,
     };
+}
+
+fn probe_reader(stream: *io.ReadStream) api.ReadError!bool {
+    const r = stream.reader();
+    const header = r.peek(16) catch |e| switch (e) {
+        error.EndOfStream => return false,
+        else => return error.ReadFailed,
+    };
+    _ = decodeHeader(header) catch return false;
+    return true;
 }
 
 fn qoa_decode_from_bytes(allocator: std.mem.Allocator, bytes: []const u8) api.ReadError!api.Audio {

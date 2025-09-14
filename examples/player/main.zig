@@ -28,7 +28,7 @@ pub fn main() !void {
         return;
     };
 
-    var audio = zigaudio.readFromPath(allocator, audio_path) catch |e| switch (e) {
+    var stream = zigaudio.fromPath(allocator, audio_path) catch |e| switch (e) {
         error.Unsupported => {
             std.debug.print("unsupported format: {s}\n", .{audio_path});
             return;
@@ -38,15 +38,13 @@ pub fn main() !void {
             return;
         },
     };
-    defer audio.deinit();
+    defer stream.deinit();
 
-    std.debug.print("frames: {d}\n", .{audio.frameCount()});
-    std.debug.print("samples: {d}\n", .{audio.sampleCount()});
-    std.debug.print("duration: {d:.2}s\n", .{audio.durationSeconds()});
+    std.debug.print("sample_rate: {d}, channels: {d}\n", .{ stream.info.sample_rate, stream.info.channels });
 
     const options = zoto.ContextOptions{
-        .sample_rate = audio.params.sample_rate,
-        .channel_count = audio.params.channels,
+        .sample_rate = stream.info.sample_rate,
+        .channel_count = stream.info.channels,
         .format = .int16_le,
     };
 
@@ -55,9 +53,7 @@ pub fn main() !void {
 
     context.waitForReady();
 
-    // Wrap the decoded PCM bytes as a Reader for zoto
-    var reader_iface = std.Io.Reader.fixed(audio.data);
-    const player = try context.newPlayer(&reader_iface);
+    const player = try context.newPlayer(stream.readerInterface());
     defer player.deinit();
 
     std.debug.print("Starting playback...\n", .{});
