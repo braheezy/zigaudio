@@ -34,4 +34,21 @@ pub fn build(b: *std.Build) void {
 
     const run_step = b.step("run", "Run the player example");
     run_step.dependOn(&run_cmd.step);
+
+    // Bench binary
+    const bench_mod = b.createModule(.{
+        .root_source_file = b.path("examples/bench/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "zigaudio", .module = lib_mod }},
+    });
+    const bench_exe = b.addExecutable(.{
+        .name = "bench",
+        .root_module = bench_mod,
+    });
+    b.installArtifact(bench_exe);
+    const bench_run = b.addRunArtifact(bench_exe);
+    if (b.args) |args| bench_run.addArgs(args);
+    const bench_step = b.step("bench", "Run the bench example");
+    bench_step.dependOn(&bench_run.step);
 }
