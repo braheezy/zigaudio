@@ -1,1 +1,9 @@
 zoto
+references/qoa/reference_decode_file
+references/qoa/reference_decode_mem
+references/qoa/qoa.h
+references/qoa/embedded_qoa.h
+/*.qoa
+/*.aac
+/*.wav
+/*.mp4
