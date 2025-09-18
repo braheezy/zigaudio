@@ -66,7 +66,12 @@ pub fn main() !void {
     };
     defer stream.deinit();
 
-    std.debug.print("sample_rate: {d}, channels: {d}\n", .{ stream.info.sample_rate, stream.info.channels });
+    std.debug.print("Audio Info:\n", .{});
+    std.debug.print("  Sample Rate: {d} Hz\n", .{stream.info.sample_rate});
+    std.debug.print("  Channels: {d}\n", .{stream.info.channels});
+    std.debug.print("  Sample Type: {s}\n", .{@tagName(stream.info.sample_type)});
+    std.debug.print("  Total Frames: {d}\n", .{stream.info.total_frames});
+    std.debug.print("  Duration: {d:.2} seconds\n", .{@as(f64, @floatFromInt(stream.info.total_frames)) / @as(f64, @floatFromInt(stream.info.sample_rate))});
 
     const options = zoto.ContextOptions{
         .sample_rate = stream.info.sample_rate,

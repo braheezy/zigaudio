@@ -64,4 +64,13 @@ pub fn build(b: *std.Build) void {
         .root_module = bench_file_mod,
     });
     b.installArtifact(bench_file_exe);
+
+    // Test target
+    const test_exe = b.addTest(.{
+        .name = "test",
+        .root_module = lib_mod,
+    });
+    const test_run = b.addRunArtifact(test_exe);
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&test_run.step);
 }
