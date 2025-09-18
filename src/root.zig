@@ -151,7 +151,7 @@ pub const ManagedAudioStream = struct {
     }
 };
 
-pub const FormatId = enum { unknown, qoa };
+pub const FormatId = enum { unknown, qoa, wav };
 
 // Decoder/Encoder vtable. New formats register implementations here.
 pub const ProbeFn = *const fn (stream: *io.ReadStream) ReadError!bool;
@@ -442,4 +442,10 @@ pub fn fromMemory(allocator: std.mem.Allocator, bytes: []const u8) ReadError!Man
     const dec = try openStreamDecoder(allocator, &stream);
     const reader = AudioReader.init(dec, buf);
     return .{ .allocator = allocator, .reader = reader, .buffer = buf, .decoder = dec, .info = dec.info };
+}
+
+test {
+    @import("std").testing.refAllDecls(@This());
+    _ = @import("qoa_test.zig");
+    _ = @import("wav_test.zig");
 }
