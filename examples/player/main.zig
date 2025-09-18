@@ -71,7 +71,15 @@ pub fn main() !void {
     std.debug.print("  Channels: {d}\n", .{stream.info.channels});
     std.debug.print("  Sample Type: {s}\n", .{@tagName(stream.info.sample_type)});
     std.debug.print("  Total Frames: {d}\n", .{stream.info.total_frames});
-    std.debug.print("  Duration: {d:.2} seconds\n", .{@as(f64, @floatFromInt(stream.info.total_frames)) / @as(f64, @floatFromInt(stream.info.sample_rate))});
+    const total_seconds_f = @as(f64, @floatFromInt(stream.info.total_frames)) / @as(f64, @floatFromInt(stream.info.sample_rate));
+    const total_seconds: u64 = @intFromFloat(@floor(total_seconds_f));
+    if (total_seconds >= 60) {
+        const minutes: u64 = total_seconds / 60;
+        const seconds: u64 = total_seconds % 60;
+        std.debug.print("  Duration: {d}m {d}s\n", .{ minutes, seconds });
+    } else {
+        std.debug.print("  Duration: {d}s\n", .{total_seconds});
+    }
 
     const options = zoto.ContextOptions{
         .sample_rate = stream.info.sample_rate,

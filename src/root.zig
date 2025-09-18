@@ -414,7 +414,7 @@ pub const AudioReader = struct {
 
 pub fn fromPath(allocator: std.mem.Allocator, path: []const u8) ReadError!ManagedAudioStream {
     var file = std.fs.cwd().openFile(path, .{ .mode = .read_only }) catch |e| switch (e) {
-        error.FileNotFound => return error.InvalidFormat,
+        error.FileNotFound => return error.FileNotFound,
         else => return error.ReadFailed,
     };
     defer file.close();
