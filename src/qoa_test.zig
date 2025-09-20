@@ -101,3 +101,21 @@ test "QOA encode from WAV decodes equal to golden" {
     // Allow small per-sample deviation due to encoder heuristics
     try testing.expect(max_abs_diff <= 1024);
 }
+
+test "QOA encode from WAV matches golden bytes" {
+    const wav_bytes = @embedFile("test-files/fanfare_heartcontainer.wav");
+    const golden_qoa = @embedFile("test-files/fanfare_heartcontainer.qoa");
+
+    var reader = std.Io.Reader.fixed(wav_bytes);
+    var audio = try api.decode(testing.allocator, &reader);
+    defer audio.deinit();
+
+    const out_path = "test_out_exact.qoa";
+    defer std.fs.cwd().deleteFile(out_path) catch {};
+    try api.encodeToPath(.qoa, out_path, &audio, .{});
+
+    const actual_bytes = try std.fs.cwd().readFileAlloc(testing.allocator, out_path, std.math.maxInt(usize));
+    defer testing.allocator.free(actual_bytes);
+
+    try testing.expectEqualSlices(u8, golden_qoa, actual_bytes);
+}
