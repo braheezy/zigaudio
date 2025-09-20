@@ -65,6 +65,19 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(bench_file_exe);
 
+    // Convert example
+    const convert_mod = b.createModule(.{
+        .root_source_file = b.path("examples/convert/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "zigaudio", .module = lib_mod }},
+    });
+    const convert_exe = b.addExecutable(.{
+        .name = "convert",
+        .root_module = convert_mod,
+    });
+    b.installArtifact(convert_exe);
+
     // Test target
     const test_exe = b.addTest(.{
         .name = "test",

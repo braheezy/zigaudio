@@ -62,3 +62,42 @@ test "QOA error handling" {
     try testing.expectError(error.InvalidFormat, qoa.vtable.decode_from_bytes(testing.allocator, invalid_data));
     try testing.expectError(error.Unsupported, api.fromMemory(testing.allocator, invalid_data));
 }
+
+test "QOA encode from WAV decodes equal to golden" {
+    const wav_bytes = @embedFile("test-files/fanfare_heartcontainer.wav");
+    const golden_qoa = @embedFile("test-files/fanfare_heartcontainer.qoa");
+
+    var reader = std.Io.Reader.fixed(wav_bytes);
+    var audio = try api.decode(testing.allocator, &reader);
+    defer audio.deinit();
+
+    const out_path = "test_out.qoa";
+    defer std.fs.cwd().deleteFile(out_path) catch {};
+    try api.encodeToPath(.qoa, out_path, &audio, .{});
+
+    const actual_bytes = try std.fs.cwd().readFileAlloc(testing.allocator, out_path, std.math.maxInt(usize));
+    defer testing.allocator.free(actual_bytes);
+
+    // Decode both our encoded QOA and the golden QOA and compare PCM
+    const dec_golden = try qoa.decode(testing.allocator, golden_qoa);
+    defer testing.allocator.free(dec_golden.samples);
+    const dec_actual = try qoa.decode(testing.allocator, actual_bytes);
+    defer testing.allocator.free(dec_actual.samples);
+
+    try testing.expectEqual(dec_golden.decoder.channels, dec_actual.decoder.channels);
+    try testing.expectEqual(dec_golden.decoder.sample_rate, dec_actual.decoder.sample_rate);
+    try testing.expectEqual(dec_golden.decoder.sample_count, dec_actual.decoder.sample_count);
+
+    const a = dec_golden.samples;
+    const b = dec_actual.samples;
+    var max_abs_diff: i32 = 0;
+    var i: usize = 0;
+    while (i < a.len and i < b.len) : (i += 1) {
+        const da: i32 = a[i];
+        const db: i32 = b[i];
+        const d: i32 = if (da > db) da - db else db - da;
+        if (d > max_abs_diff) max_abs_diff = d;
+    }
+    // Allow small per-sample deviation due to encoder heuristics
+    try testing.expect(max_abs_diff <= 1024);
+}

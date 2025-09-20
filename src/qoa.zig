@@ -48,32 +48,37 @@ const dequant_table = [16][8]i16{
 };
 
 pub const Lms = struct {
-    history: [lms_len]i16,
-    weights: [lms_len]i16,
+    history: [lms_len]i32,
+    weights: [lms_len]i32,
 
     fn predict(self: *Lms) i32 {
         var prediction: i32 = 0;
         for (0..lms_len) |i| {
-            prediction += @as(i32, @intCast(self.weights[i])) * @as(i32, @intCast(self.history[i]));
+            const mul = @mulWithOverflow(self.weights[i], self.history[i]);
+            const sum = @addWithOverflow(prediction, mul[0]);
+            prediction = sum[0];
         }
         return prediction >> 13;
     }
     fn update(self: *Lms, sample: i16, residual: i16) void {
-        const delta = residual >> 4;
+        const delta: i32 = @as(i32, residual) >> 4;
         for (0..lms_len) |i| {
             self.weights[i] += if (self.history[i] < 0) -delta else delta;
         }
         for (0..lms_len - 1) |i| {
             self.history[i] = self.history[i + 1];
         }
-        self.history[lms_len - 1] = sample;
+        self.history[lms_len - 1] = @intCast(sample);
     }
 };
 
 fn div(v: i32, scalefactor: i32) i32 {
-    const reciprocal = reciprocal_table[scalefactor];
-    const n = (v * reciprocal + (1 << 15)) >> 16;
-    return n + ((v > 0) - (v < 0)) - ((n > 0) - (n < 0)); // round away from 0
+    const reciprocal: i32 = reciprocal_table[@as(usize, @intCast(scalefactor))];
+    const n64: i64 = (@as(i64, v) * @as(i64, reciprocal) + (@as(i64, 1) << 15)) >> 16;
+    const n: i32 = @intCast(n64);
+    const sgn_v: i32 = @as(i32, @intFromBool(v > 0)) - @as(i32, @intFromBool(v < 0));
+    const sgn_n: i32 = @as(i32, @intFromBool(n > 0)) - @as(i32, @intFromBool(n < 0));
+    return n + sgn_v - sgn_n; // round away from 0
 }
 
 fn clamp(v: i32, min: i32, max: i32) i32 {
@@ -132,9 +137,13 @@ pub const Decoder = struct {
             p += 16;
 
             for (0..lms_len) |i| {
-                self.lms[c].history[i] = @truncate(@as(i32, @intCast((history >> 48))));
+                const h_u16: u16 = @truncate(history >> 48);
+                const h_i16: i16 = @bitCast(h_u16);
+                self.lms[c].history[i] = @intCast(h_i16);
                 history <<= 16;
-                self.lms[c].weights[i] = @truncate(@as(i32, @intCast((weights >> 48))));
+                const w_u16: u16 = @truncate(weights >> 48);
+                const w_i16: i16 = @bitCast(w_u16);
+                self.lms[c].weights[i] = @intCast(w_i16);
                 weights <<= 16;
             }
         }
@@ -289,9 +298,300 @@ fn qoa_decode_from_bytes(allocator: std.mem.Allocator, bytes: []const u8) api.Re
     };
 }
 
-fn qoa_encode(_writer: *std.Io.Writer, _audio: *const api.Audio, _options: api.EncodeOptions) api.WriteError!void {
-    _ = _writer;
-    _ = _audio;
+fn writeAllConst(writer: *std.Io.Writer, src: []const u8) api.WriteError!void {
+    var remaining = src;
+    while (remaining.len != 0) {
+        const dst = try writer.writableSliceGreedy(1);
+        if (dst.len == 0) return error.WriteFailed;
+        const n: usize = @min(dst.len, remaining.len);
+        std.mem.copyForwards(u8, dst[0..n], remaining[0..n]);
+        writer.advance(n);
+        remaining = remaining[n..];
+    }
+}
+
+fn writeU64BE(writer: *std.Io.Writer, v: u64) api.WriteError!void {
+    var buf: [8]u8 = undefined;
+    buf[0] = @truncate(v >> 56);
+    buf[1] = @truncate(v >> 48);
+    buf[2] = @truncate(v >> 40);
+    buf[3] = @truncate(v >> 32);
+    buf[4] = @truncate(v >> 24);
+    buf[5] = @truncate(v >> 16);
+    buf[6] = @truncate(v >> 8);
+    buf[7] = @truncate(v >> 0);
+    try writeAllConst(writer, &buf);
+}
+
+fn fileWriteAllConst(file: std.fs.File, src: []const u8) api.WriteError!void {
+    file.writeAll(src) catch return error.WriteFailed;
+}
+
+fn fileWriteU64BE(file: std.fs.File, v: u64) api.WriteError!void {
+    var buf: [8]u8 = undefined;
+    buf[0] = @truncate(v >> 56);
+    buf[1] = @truncate(v >> 48);
+    buf[2] = @truncate(v >> 40);
+    buf[3] = @truncate(v >> 32);
+    buf[4] = @truncate(v >> 24);
+    buf[5] = @truncate(v >> 16);
+    buf[6] = @truncate(v >> 8);
+    buf[7] = @truncate(v >> 0);
+    try fileWriteAllConst(file, &buf);
+}
+
+pub fn encodeToFile(file: std.fs.File, audio: *const api.Audio) api.WriteError!void {
+    if (audio.params.sample_type != .i16) return error.UnsupportedBitDepth;
+    if (audio.params.channels == 0 or audio.params.channels > max_channels) return error.UnsupportedChannelCount;
+    if (audio.params.sample_rate == 0 or audio.params.sample_rate > 0x00FF_FFFF) return error.UnsupportedSampleRate;
+
+    const channels: usize = audio.params.channels;
+    const total_frames: usize = audio.frameCount();
+    if (total_frames > std.math.maxInt(u32)) return error.Unsupported;
+
+    var lms: [max_channels]Lms = undefined;
+    for (0..channels) |c| {
+        for (0..lms_len) |i| lms[c].history[i] = 0;
+        lms[c].weights[0] = 0;
+        lms[c].weights[1] = 0;
+        lms[c].weights[2] = -(@as(i16, 1) << 13);
+        lms[c].weights[3] = (@as(i16, 1) << 14);
+    }
+    const file_header: u64 = (@as(u64, magic) << 32) | @as(u64, @intCast(total_frames));
+    try fileWriteU64BE(file, file_header);
+
+    var frame_start: usize = 0;
+    while (frame_start < total_frames) : (frame_start += frame_len) {
+        var prev_scalefactor: [max_channels]i32 = [_]i32{0} ** max_channels;
+        const remaining: usize = total_frames - frame_start;
+        const this_frame_len: usize = if (remaining < frame_len) remaining else frame_len;
+        const slices: usize = (this_frame_len + slice_len - 1) / slice_len;
+        const frame_size: usize = 8 + (lms_len * 4 * channels) + (8 * slices * channels);
+
+        var fh: u64 = 0;
+        fh |= (@as(u64, @intCast(channels)) & 0xff) << 56;
+        fh |= (@as(u64, audio.params.sample_rate) & 0x00ff_ffff) << 32;
+        fh |= (@as(u64, @intCast(this_frame_len)) & 0x0000_ffff) << 16;
+        fh |= (@as(u64, @intCast(frame_size)) & 0x0000_ffff);
+        try fileWriteU64BE(file, fh);
+
+        for (0..channels) |c| {
+            var history_be: u64 = 0;
+            var weights_be: u64 = 0;
+            for (0..lms_len) |i| {
+                const h: u16 = @bitCast(@as(i16, @truncate(lms[c].history[i])));
+                const w: u16 = @bitCast(@as(i16, @truncate(lms[c].weights[i])));
+                history_be = (history_be << 16) | (@as(u64, h) & 0xffff);
+                weights_be = (weights_be << 16) | (@as(u64, w) & 0xffff);
+            }
+            try fileWriteU64BE(file, history_be);
+            try fileWriteU64BE(file, weights_be);
+        }
+
+        var sample_index: usize = 0;
+        while (sample_index < this_frame_len) : (sample_index += slice_len) {
+            for (0..channels) |c| {
+                const slice_actual_len_i32: i32 = @intCast(@min(slice_len, this_frame_len - sample_index));
+                const slice_len_i32: i32 = slice_actual_len_i32;
+
+                var best_rank: u64 = std.math.maxInt(u64);
+                var best_slice: u64 = 0;
+                var best_lms: Lms = lms[c];
+                var best_scalefactor: i32 = 0;
+
+                var sfi: i32 = 0;
+                while (sfi < 16) : (sfi += 1) {
+                    const scalefactor: i32 = (sfi + prev_scalefactor[c]) & 15;
+                    var state = lms[c];
+                    var slice_bits: u64 = @intCast(@as(u4, @intCast(scalefactor)));
+                    var current_rank: u64 = 0;
+                    var current_error: u64 = 0;
+                    var k: i32 = 0;
+                    while (k < slice_len_i32) : (k += 1) {
+                        const f: usize = frame_start + sample_index + @as(usize, @intCast(k));
+                        if (f >= frame_start + this_frame_len) break;
+                        const sample_pos: usize = f * channels + c;
+                        const sample: i32 = @intCast(readSampleI16LE(audio, sample_pos));
+                        const predicted: i32 = state.predict();
+                        const residual: i32 = sample - predicted;
+                        const scaled: i32 = div(residual, scalefactor);
+                        const clamped: i32 = clamp(scaled, -8, 8);
+                        const quantized: i32 = quant_table[@as(usize, @intCast(clamped + 8))];
+                        const dequantized_i16: i16 = dequant_table[@as(usize, @intCast(scalefactor))][@as(usize, @intCast(quantized))];
+                        const dequantized: i32 = @intCast(dequantized_i16);
+                        const reconstructed_i16: i16 = clamp_s16(predicted + dequantized);
+                        const reconstructed: i32 = @intCast(reconstructed_i16);
+                        var wp: i32 =
+                            @as(i32, @intCast(state.weights[0])) * @as(i32, @intCast(state.weights[0])) +
+                            @as(i32, @intCast(state.weights[1])) * @as(i32, @intCast(state.weights[1])) +
+                            @as(i32, @intCast(state.weights[2])) * @as(i32, @intCast(state.weights[2])) +
+                            @as(i32, @intCast(state.weights[3])) * @as(i32, @intCast(state.weights[3]));
+                        wp = (wp >> 18) - 0x8ff;
+                        if (wp < 0) wp = 0;
+                        const err_i: i64 = @as(i64, sample) - @as(i64, reconstructed);
+                        const err_sq: u64 = @intCast(err_i * err_i);
+                        const pen_sq: u64 = @intCast(@as(i64, wp) * @as(i64, wp));
+                        current_rank += err_sq + pen_sq;
+                        current_error += err_sq;
+                        if (current_error >= best_rank) break;
+                        state.update(@intCast(reconstructed), @intCast(dequantized));
+                        slice_bits = (slice_bits << 3) | @as(u64, @intCast(@as(u3, @intCast(quantized))));
+                    }
+                    if (current_error < best_rank) {
+                        best_rank = current_error;
+                        best_slice = slice_bits;
+                        best_lms = state;
+                        best_scalefactor = scalefactor;
+                    }
+                }
+                prev_scalefactor[c] = best_scalefactor;
+                lms[c] = best_lms;
+                const pad_samples_i32: i32 = slice_len - slice_len_i32;
+                if (pad_samples_i32 > 0) {
+                    const shift: u6 = @as(u6, @intCast(@as(u32, @intCast(pad_samples_i32 * 3))));
+                    best_slice <<= shift;
+                }
+                try fileWriteU64BE(file, best_slice);
+            }
+        }
+    }
+}
+
+fn readSampleI16LE(audio: *const api.Audio, sample_index: usize) i16 {
+    const byte_index = sample_index * 2;
+    const p = @as(*const [2]u8, @ptrCast(&audio.data[byte_index]));
+    return std.mem.readInt(i16, p, .little);
+}
+
+fn qoa_encode(writer: *std.Io.Writer, audio: *const api.Audio, _options: api.EncodeOptions) api.WriteError!void {
     _ = _options;
-    return error.Unsupported;
+    if (audio.params.sample_type != .i16) return error.UnsupportedBitDepth;
+    if (audio.params.channels == 0 or audio.params.channels > max_channels) return error.UnsupportedChannelCount;
+    if (audio.params.sample_rate == 0 or audio.params.sample_rate > 0x00FF_FFFF) return error.UnsupportedSampleRate;
+
+    const channels: usize = audio.params.channels;
+    const total_frames: usize = audio.frameCount();
+    if (total_frames > std.math.maxInt(u32)) return error.Unsupported;
+
+    // Initialize LMS per channel
+    var lms: [max_channels]Lms = undefined;
+    for (0..channels) |c| {
+        for (0..lms_len) |i| {
+            lms[c].history[i] = 0;
+        }
+        lms[c].weights[0] = 0;
+        lms[c].weights[1] = 0;
+        lms[c].weights[2] = -(@as(i16, 1) << 13);
+        lms[c].weights[3] = (@as(i16, 1) << 14);
+    }
+
+    // File header
+    const file_header: u64 = (@as(u64, magic) << 32) | @as(u64, @intCast(total_frames));
+    try writeU64BE(writer, file_header);
+
+    var frame_start: usize = 0;
+    while (frame_start < total_frames) : (frame_start += frame_len) {
+        var prev_scalefactor: [max_channels]i32 = [_]i32{0} ** max_channels;
+        const remaining: usize = total_frames - frame_start;
+        const this_frame_len: usize = if (remaining < frame_len) remaining else frame_len;
+        const slices: usize = (this_frame_len + slice_len - 1) / slice_len;
+        const frame_size: usize = 8 + (lms_len * 4 * channels) + (8 * slices * channels);
+
+        // Frame header: channels (8), samplerate (24), frame_len (16), frame_size (16)
+        var fh: u64 = 0;
+        fh |= (@as(u64, @intCast(channels)) & 0xff) << 56;
+        fh |= (@as(u64, audio.params.sample_rate) & 0x00ff_ffff) << 32;
+        fh |= (@as(u64, @intCast(this_frame_len)) & 0x0000_ffff) << 16;
+        fh |= (@as(u64, @intCast(frame_size)) & 0x0000_ffff);
+        try writeU64BE(writer, fh);
+
+        // Write current LMS state per channel
+        for (0..channels) |c| {
+            var history_be: u64 = 0;
+            var weights_be: u64 = 0;
+            for (0..lms_len) |i| {
+                const h: u16 = @bitCast(@as(i16, @truncate(lms[c].history[i])));
+                const w: u16 = @bitCast(@as(i16, @truncate(lms[c].weights[i])));
+                history_be = (history_be << 16) | (@as(u64, h) & 0xffff);
+                weights_be = (weights_be << 16) | (@as(u64, w) & 0xffff);
+            }
+            try writeU64BE(writer, history_be);
+            try writeU64BE(writer, weights_be);
+        }
+
+        // Encode all slices for all channels
+        var sample_index: usize = 0;
+        while (sample_index < this_frame_len) : (sample_index += slice_len) {
+            for (0..channels) |c| {
+                const slice_actual_len_i32: i32 = @intCast(@min(slice_len, this_frame_len - sample_index));
+                const slice_len_i32: i32 = slice_actual_len_i32;
+
+                var best_rank: u64 = std.math.maxInt(u64);
+                var best_slice: u64 = 0;
+                var best_lms: Lms = lms[c];
+                var best_scalefactor: i32 = 0;
+
+                var sfi: i32 = 0;
+                while (sfi < 16) : (sfi += 1) {
+                    const scalefactor: i32 = (sfi + prev_scalefactor[c]) & (16 - 1);
+                    var state = lms[c];
+                    var slice_bits: u64 = @intCast(@as(u4, @intCast(scalefactor)));
+                    var current_rank: u64 = 0;
+
+                    var k: i32 = 0;
+                    while (k < slice_len_i32) : (k += 1) {
+                        const f: usize = frame_start + sample_index + @as(usize, @intCast(k));
+                        if (f >= frame_start + this_frame_len) break;
+                        const sample_pos: usize = f * channels + c;
+                        const sample: i32 = @intCast(readSampleI16LE(audio, sample_pos));
+                        const predicted: i32 = state.predict();
+                        const residual: i32 = sample - predicted;
+                        const scaled: i32 = div(residual, scalefactor);
+                        const clamped: i32 = clamp(scaled, -8, 8);
+                        const quantized: i32 = quant_table[@as(usize, @intCast(clamped + 8))];
+                        const dequantized_i16: i16 = dequant_table[@as(usize, @intCast(scalefactor))][@as(usize, @intCast(quantized))];
+                        const dequantized: i32 = @intCast(dequantized_i16);
+                        const reconstructed_i16: i16 = clamp_s16(predicted + dequantized);
+                        const reconstructed: i32 = @intCast(reconstructed_i16);
+
+                        // penalty
+                        var wp: i32 =
+                            @as(i32, @intCast(state.weights[0])) * @as(i32, @intCast(state.weights[0])) +
+                            @as(i32, @intCast(state.weights[1])) * @as(i32, @intCast(state.weights[1])) +
+                            @as(i32, @intCast(state.weights[2])) * @as(i32, @intCast(state.weights[2])) +
+                            @as(i32, @intCast(state.weights[3])) * @as(i32, @intCast(state.weights[3]));
+                        wp = (wp >> 18) - 0x8ff;
+                        if (wp < 0) wp = 0;
+
+                        const err_i: i64 = @as(i64, sample) - @as(i64, reconstructed);
+                        const err_sq: u64 = @intCast(err_i * err_i);
+                        const pen_sq: u64 = @intCast(@as(i64, wp) * @as(i64, wp));
+                        current_rank += err_sq + pen_sq;
+                        if (current_rank > best_rank) break;
+
+                        state.update(@intCast(reconstructed), @intCast(dequantized));
+                        slice_bits = (slice_bits << 3) | @as(u64, @intCast(@as(u3, @intCast(quantized))));
+                    }
+
+                    if (current_rank < best_rank) {
+                        best_rank = current_rank;
+                        best_slice = slice_bits;
+                        best_lms = state;
+                        best_scalefactor = scalefactor;
+                    }
+                }
+
+                prev_scalefactor[c] = best_scalefactor;
+                lms[c] = best_lms;
+
+                // pad remaining 3-bits for short slices in last frame
+                const pad_samples_i32: i32 = slice_len - slice_len_i32;
+                if (pad_samples_i32 > 0) {
+                    const shift: u6 = @as(u6, @intCast(@as(u32, @intCast(pad_samples_i32 * 3))));
+                    best_slice <<= shift;
+                }
+                try writeU64BE(writer, best_slice);
+            }
+        }
+    }
 }

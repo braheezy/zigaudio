@@ -231,6 +231,36 @@ pub fn decode(allocator: std.mem.Allocator, reader: *std.Io.Reader) ReadError!Au
     } else return error.Unsupported;
 }
 
+fn findFormatById(id: FormatId) ?FormatVTable {
+    for (known_formats) |fmt| {
+        if (fmt.id == id) return fmt;
+    }
+    return null;
+}
+
+pub fn encodeToWriter(format: FormatId, writer: *std.Io.Writer, audio: *const Audio, options: EncodeOptions) WriteError!void {
+    const fmt = findFormatById(format) orelse return error.Unsupported;
+    return fmt.encode(writer, audio, options);
+}
+
+pub fn encodeToPath(format: FormatId, path: []const u8, audio: *const Audio, options: EncodeOptions) WriteError!void {
+    var file = std.fs.cwd().createFile(path, .{ .truncate = true }) catch return error.WriteFailed;
+    defer file.close();
+    // Bypass buffered writer to avoid partial flush issues: write directly to file
+    switch (format) {
+        .qoa => {
+            // Use direct file encoder to control flushing/size
+            @import("qoa.zig").encodeToFile(file, audio) catch return error.WriteFailed;
+        },
+        else => {
+            const buf = try std.heap.page_allocator.alloc(u8, DEFAULT_STREAM_BUFFER_SIZE);
+            defer std.heap.page_allocator.free(buf);
+            var fw = file.writer(buf);
+            try encodeToWriter(format, &fw.interface, audio, options);
+        },
+    }
+}
+
 // Generic streaming decoder interface
 pub const StreamDecoderVTable = struct {
     read: *const fn (*AnyStreamDecoder, dst: []u8) ReadError!usize,
