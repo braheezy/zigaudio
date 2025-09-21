@@ -73,7 +73,7 @@ test "QOA encode from WAV decodes equal to golden" {
 
     const out_path = "test_out.qoa";
     defer std.fs.cwd().deleteFile(out_path) catch {};
-    try api.encodeToPath(.qoa, out_path, &audio, .{});
+    try api.encodeToPath(.qoa, out_path, &audio);
 
     const actual_bytes = try std.fs.cwd().readFileAlloc(testing.allocator, out_path, std.math.maxInt(usize));
     defer testing.allocator.free(actual_bytes);
@@ -112,7 +112,7 @@ test "QOA encode from WAV matches golden bytes" {
 
     const out_path = "test_out_exact.qoa";
     defer std.fs.cwd().deleteFile(out_path) catch {};
-    try api.encodeToPath(.qoa, out_path, &audio, .{});
+    try api.encodeToPath(.qoa, out_path, &audio);
 
     const actual_bytes = try std.fs.cwd().readFileAlloc(testing.allocator, out_path, std.math.maxInt(usize));
     defer testing.allocator.free(actual_bytes);

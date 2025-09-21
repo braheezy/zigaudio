@@ -32,7 +32,7 @@ root_module.addImport("zigaudio", zigaudio.module("zigaudio"));
 
 ## Quick Start
 
-### Basic Usage
+### Streaming (default)
 
 ```zig
 const std = @import("std");
@@ -41,36 +41,69 @@ const zigaudio = @import("zigaudio");
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
-    // Load audio from file
-    var audio = try zigaudio.fromPath(allocator, "song.qoa");
-    defer audio.deinit();
-
-    std.debug.print("Sample rate: {}\n", .{audio.params.sample_rate});
-    std.debug.print("Channels: {}\n", .{audio.params.channels});
-    std.debug.print("Duration: {:.2}s\n", .{audio.durationSeconds()});
-}
-```
-
-### Streaming Playback
-
-```zig
-const std = @import("std");
-const zigaudio = @import("zigaudio");
-
-pub fn main() !void {
-    const allocator = std.heap.page_allocator;
-
-    // Create streaming audio source
+    // Create streaming source using an internal buffer
     var stream = try zigaudio.fromPath(allocator, "song.qoa");
     defer stream.deinit();
 
     // Use with audio playback library
     // stream.readerInterface() provides std.Io.Reader for PCM data
     // stream.info contains AudioInfo for setup
+    // Optionally pull a fixed amount:
+    var small: [50 * 2 * @sizeOf(i16)]u8 = undefined; // 50 frames, 2ch, i16
+    const frames = try stream.readFramesInto(&small);
 }
 ```
 
-### Memory-Based Audio
+### Unmanaged streaming (caller-provided buffers; no allocator)
+
+```zig
+const std = @import("std");
+const zigaudio = @import("zigaudio");
+
+pub fn main() !void {
+    const allocator = std.heap.page_allocator;
+var in_buf: [64 * 1024]u8 = undefined;
+var out_buf: [64 * 1024]u8 = undefined;
+var stream = try zigaudio.fromPathUnmanaged("song.qoa", &in_buf, &out_buf);
+    defer stream.deinit();
+// Pull into your own buffer whenever you want
+var slice: [1024]u8 = undefined;
+const frames = try stream.readFramesInto(&slice);
+}
+```
+
+### Full decode (all samples) from a stream
+
+```zig
+const std = @import("std");
+const zigaudio = @import("zigaudio");
+
+pub fn main() !void {
+    const allocator = std.heap.page_allocator;
+var stream = try zigaudio.fromPath(allocator, "song.qoa");
+defer stream.deinit();
+// All samples (or use toAudioLimit on ManagedAudioStream for partial):
+var audio = try stream.toAudio(allocator);
+    defer audio.deinit();
+    std.debug.print("frames: {} bytes: {}\n", .{ audio.frameCount(), audio.data.len });
+}
+```
+
+### Encode to file
+
+```zig
+const std = @import("std");
+const zigaudio = @import("zigaudio");
+
+pub fn main() !void {
+    const allocator = std.heap.page_allocator;
+    var audio = try zigaudio.decodePath(allocator, "song.wav");
+    defer audio.deinit();
+    try zigaudio.encodeToPath(.qoa, "out.qoa", &audio);
+}
+```
+
+### In-memory sources (embedded or preloaded bytes)
 
 ```zig
 const std = @import("std");
@@ -80,16 +113,32 @@ const embedded_audio = @embedFile("song.qoa");
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
+    // Streaming from embedded bytes
+    var stream = try zigaudio.fromMemory(allocator, embedded_audio);
+    defer stream.deinit();
 
-    // Load from embedded data
-    var audio = try zigaudio.fromMemory(allocator, embedded_audio);
+    // Full decode from embedded bytes
+    var r = std.Io.Reader.fixed(embedded_audio);
+    var audio = try zigaudio.decode(allocator, &r);
     defer audio.deinit();
-
-    // Access PCM data
-    const pcm_data = audio.data;
-    const frame_count = audio.frameCount();
 }
 ```
+
+## API cheat sheet (simple)
+
+- Streaming (managed) — fromPath(allocator, path) -> ManagedAudioStream
+  - Default for playback. Optional pulls: stream.readFramesInto(dst)
+  - Get N frames: stream.toAudioLimit(allocator, max_frames)
+
+- Streaming (unmanaged) — fromPathUnmanaged(path, file_buffer, pcm_buffer) -> AudioStream
+  - You own the buffers. Pull with: stream.readFramesInto(dst)
+
+- In-memory source — fromMemory(allocator, bytes) -> ManagedAudioStream
+  - For embedded/preloaded bytes
+
+- Full decode from a custom reader — decode(allocator, reader) -> Audio
+
+- Encode to file — encodeToPath(format: zigaudio.Format, path, &audio)
 
 ## Examples
 

@@ -1,7 +1,7 @@
 const std = @import("std");
 const zigaudio = @import("zigaudio");
 
-fn detectFormatIdFromPath(path: []const u8) zigaudio.FormatId {
+fn detectFormatIdFromPath(path: []const u8) zigaudio.Id {
     const ext = std.fs.path.extension(path);
     if (std.ascii.eqlIgnoreCase(ext, ".qoa")) return .qoa;
     if (std.ascii.eqlIgnoreCase(ext, ".wav")) return .wav;
@@ -43,5 +43,5 @@ pub fn main() !void {
     defer pcm.deinit();
 
     // Encode to requested format using high-level API
-    try zigaudio.encodeToPath(out_fmt, out_path, &pcm, .{});
+    try zigaudio.encodeToPath(out_fmt, out_path, &pcm);
 }

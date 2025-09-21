@@ -1,5 +1,6 @@
 const std = @import("std");
 const api = @import("root.zig");
+const fapi = @import("formats.zig");
 const io = @import("io.zig");
 
 // WAV format constants
@@ -17,6 +18,17 @@ const WavInfo = struct {
     data_offset: usize = 0,
     data_size: usize = 0,
 };
+
+fn ensureBuffered(rdr: *std.io.Reader, need: usize) api.ReadError![]const u8 {
+    while (true) {
+        const buf = rdr.buffered();
+        if (buf.len >= need) return buf;
+        rdr.fillMore() catch |e| switch (e) {
+            error.EndOfStream => return buf,
+            else => return error.ReadFailed,
+        };
+    }
+}
 
 fn parse_header_for_info(bytes: []const u8) api.ReadError!WavInfo {
     if (bytes.len < 12) return error.InvalidFormat;
@@ -244,20 +256,300 @@ fn wav_decode_from_bytes(allocator: std.mem.Allocator, bytes: []const u8) api.Re
 }
 
 // Encode function - placeholder implementation
-fn wav_encode(_writer: *std.Io.Writer, _audio: *const api.Audio, _options: api.EncodeOptions) api.WriteError!void {
+fn wav_encode(_writer: *std.Io.Writer, _audio: *const api.Audio) api.WriteError!void {
     _ = _writer;
     _ = _audio;
-    _ = _options;
 
     // TODO: Implement WAV encoding
     return error.Unsupported;
 }
 
 // WAV format vtable
-pub const vtable: api.FormatVTable = .{
+pub const vtable: fapi.VTable = .{
     .id = .wav,
     .probe = probe_reader,
     .info_reader = info_reader,
     .decode_from_bytes = wav_decode_from_bytes,
+    .open_stream = wav_open_stream,
     .encode = wav_encode,
 };
+
+const WavStreamCtx = struct {
+    allocator: std.mem.Allocator,
+    stream: *io.ReadStream,
+    info: WavInfo,
+    bytes_remaining: usize,
+};
+
+fn wav_stream_read(dec: *fapi.AnyStreamDecoder, dst: []u8) api.ReadError!usize {
+    const ctx: *WavStreamCtx = @ptrCast(@alignCast(dec.context));
+    if (ctx.bytes_remaining == 0) return error.EndOfStream;
+
+    const channels: usize = ctx.info.channels;
+    const src_bps: usize = ctx.info.bits_per_sample;
+    const dst_frame_bytes: usize = channels * @sizeOf(i16);
+
+    var written: usize = 0;
+    var r = ctx.stream.reader();
+
+    // Helper to ensure n bytes available in reader buffer
+
+    switch (src_bps) {
+        16 => {
+            // Fast path: copy as-is up to alignment, limited by remaining
+            const max_out = @min(dst.len - (dst.len % dst_frame_bytes), ctx.bytes_remaining);
+            if (max_out == 0) return error.EndOfStream;
+            var remaining_out = max_out;
+            while (remaining_out != 0) {
+                const buf = try ensureBuffered(r, 1);
+                if (buf.len == 0) break;
+                const take = @min(buf.len, remaining_out);
+                std.mem.copyForwards(u8, dst[written .. written + take], buf[0..take]);
+                written += take;
+                remaining_out -= take;
+                r.toss(take);
+            }
+            ctx.bytes_remaining -= written;
+            if (written == 0) return error.EndOfStream;
+            return written;
+        },
+        8 => {
+            // u8 -> i16
+            const in_per_frame: usize = channels * 1;
+            const max_frames = @min(ctx.bytes_remaining / in_per_frame, (dst.len / dst_frame_bytes));
+            if (max_frames == 0) return error.EndOfStream;
+            var frames_done: usize = 0;
+            var i: usize = 0;
+            while (frames_done < max_frames) {
+                const need_in = @min(4096, (max_frames - frames_done) * in_per_frame);
+                const buf = try ensureBuffered(r, need_in);
+                if (buf.len == 0) break;
+                const take = @min(buf.len, need_in);
+                var si: usize = 0;
+                while (si < take) : (si += 1) {
+                    const u: u8 = buf[si];
+                    const s: i16 = @as(i16, @intCast(@as(i32, @intCast(u)) - 128)) << 8;
+                    // write to dst
+                    const p: *[2]u8 = @ptrCast(&dst[i]);
+                    @memset(p, 0);
+                    std.mem.writeInt(i16, p, s, .little);
+                    i += 2;
+                }
+                r.toss(take);
+                frames_done += take / in_per_frame;
+                ctx.bytes_remaining -= take;
+            }
+            return frames_done * dst_frame_bytes;
+        },
+        24 => {
+            const in_per_frame: usize = channels * 3;
+            const max_frames = @min(ctx.bytes_remaining / in_per_frame, (dst.len / dst_frame_bytes));
+            if (max_frames == 0) return error.EndOfStream;
+            var frames_done: usize = 0;
+            var i: usize = 0;
+            while (frames_done < max_frames) {
+                const need_in = @min(4095, (max_frames - frames_done) * in_per_frame);
+                const buf = try ensureBuffered(r, need_in);
+                if (buf.len == 0) break;
+                const take = @min(buf.len - (buf.len % 3), need_in);
+                var si: usize = 0;
+                while (si + 2 < take) : (si += 3) {
+                    const b0: u32 = buf[si + 0];
+                    const b1: u32 = buf[si + 1];
+                    const b2: u32 = buf[si + 2];
+                    var v_u: u32 = (b0) | (b1 << 8) | (b2 << 16);
+                    if ((b2 & 0x80) != 0) v_u |= 0xFF000000;
+                    const v: i32 = @bitCast(v_u);
+                    const s: i16 = @truncate(v >> 8);
+                    const p: *[2]u8 = @ptrCast(&dst[i]);
+                    std.mem.writeInt(i16, p, s, .little);
+                    i += 2;
+                }
+                r.toss(take);
+                frames_done += take / 3 / channels; // but we processed raw stream, approximate per sample
+                ctx.bytes_remaining -= take;
+            }
+            return i;
+        },
+        32 => {
+            // Treat as signed 32-bit PCM -> i16
+            const in_per_frame: usize = channels * 4;
+            const max_frames = @min(ctx.bytes_remaining / in_per_frame, (dst.len / dst_frame_bytes));
+            if (max_frames == 0) return error.EndOfStream;
+            var frames_done: usize = 0;
+            var i: usize = 0;
+            while (frames_done < max_frames) {
+                const need_in = @min(4096, (max_frames - frames_done) * in_per_frame);
+                const buf = try ensureBuffered(r, need_in);
+                if (buf.len == 0) break;
+                const take = @min(buf.len - (buf.len % 4), need_in);
+                var si: usize = 0;
+                while (si + 3 < take) : (si += 4) {
+                    const p = @as(*const [4]u8, @ptrCast(&buf[si]));
+                    const v = std.mem.readInt(i32, p, .little);
+                    const s: i16 = @truncate(v >> 16);
+                    const po: *[2]u8 = @ptrCast(&dst[i]);
+                    std.mem.writeInt(i16, po, s, .little);
+                    i += 2;
+                }
+                r.toss(take);
+                frames_done += take / in_per_frame;
+                ctx.bytes_remaining -= take;
+            }
+            return i;
+        },
+        else => {
+            // float 32/64 handled via info.audio_format check; map here
+            if (ctx.info.audio_format == 3 and (src_bps == 32 or src_bps == 64)) {
+                if (src_bps == 32) {
+                    const in_per_frame: usize = channels * 4;
+                    const max_frames = @min(ctx.bytes_remaining / in_per_frame, (dst.len / dst_frame_bytes));
+                    if (max_frames == 0) return error.EndOfStream;
+                    var frames_done: usize = 0;
+                    var i: usize = 0;
+                    while (frames_done < max_frames) {
+                        const need_in = @min(4096, (max_frames - frames_done) * in_per_frame);
+                        const buf = try ensureBuffered(r, need_in);
+                        if (buf.len == 0) break;
+                        const take = @min(buf.len - (buf.len % 4), need_in);
+                        var si: usize = 0;
+                        while (si + 3 < take) : (si += 4) {
+                            const p = @as(*const [4]u8, @ptrCast(&buf[si]));
+                            const bits = std.mem.readInt(u32, p, .little);
+                            const f: f32 = @bitCast(bits);
+                            const clamped: f32 = if (f < -1.0) -1.0 else if (f > 1.0) 1.0 else f;
+                            const s: i16 = @intFromFloat(clamped * 32767.0);
+                            const po: *[2]u8 = @ptrCast(&dst[i]);
+                            std.mem.writeInt(i16, po, s, .little);
+                            i += 2;
+                        }
+                        r.toss(take);
+                        frames_done += take / in_per_frame;
+                        ctx.bytes_remaining -= take;
+                    }
+                    return i;
+                } else {
+                    const in_per_frame: usize = channels * 8;
+                    const max_frames = @min(ctx.bytes_remaining / in_per_frame, (dst.len / dst_frame_bytes));
+                    if (max_frames == 0) return error.EndOfStream;
+                    var frames_done: usize = 0;
+                    var i: usize = 0;
+                    while (frames_done < max_frames) {
+                        const need_in = @min(4096, (max_frames - frames_done) * in_per_frame);
+                        const buf = try ensureBuffered(r, need_in);
+                        if (buf.len == 0) break;
+                        const take = @min(buf.len - (buf.len % 8), need_in);
+                        var si: usize = 0;
+                        while (si + 7 < take) : (si += 8) {
+                            const p = @as(*const [8]u8, @ptrCast(&buf[si]));
+                            const bits = std.mem.readInt(u64, p, .little);
+                            const f: f64 = @bitCast(bits);
+                            var clamped: f64 = f;
+                            if (clamped < -1.0) clamped = -1.0;
+                            if (clamped > 1.0) clamped = 1.0;
+                            const s: i16 = @intFromFloat(clamped * 32767.0);
+                            const po: *[2]u8 = @ptrCast(&dst[i]);
+                            std.mem.writeInt(i16, po, s, .little);
+                            i += 2;
+                        }
+                        r.toss(take);
+                        frames_done += take / in_per_frame;
+                        ctx.bytes_remaining -= take;
+                    }
+                    return i;
+                }
+            }
+            return error.UnsupportedBitDepth;
+        },
+    }
+}
+
+fn wav_stream_deinit(dec: *fapi.AnyStreamDecoder) void {
+    const ctx: *WavStreamCtx = @ptrCast(@alignCast(dec.context));
+    const allocator = ctx.allocator;
+    allocator.destroy(ctx);
+    allocator.destroy(dec);
+}
+
+const wav_stream_vtable: fapi.StreamDecoderVTable = .{
+    .read = wav_stream_read,
+    .deinit = wav_stream_deinit,
+};
+
+fn wav_open_stream(allocator: std.mem.Allocator, stream: *io.ReadStream) api.ReadError!*fapi.AnyStreamDecoder {
+    // Robust RIFF/fmt/data scan using small fixed peeks and explicit seeking
+    const r = stream.reader();
+    // Verify RIFF/WAVE
+    stream.seekTo(0) catch return error.ReadFailed;
+    const head12 = r.peek(12) catch return error.ReadFailed;
+    if (head12.len < 12) return error.InvalidFormat;
+    if (std.mem.readInt(u32, head12[0..4], .little) != WAV_RIFF_MAGIC) return error.InvalidFormat;
+    if (std.mem.readInt(u32, head12[8..12], .little) != WAV_WAVE_MAGIC) return error.InvalidFormat;
+
+    var info: WavInfo = .{ .audio_format = 0, .channels = 0, .sample_rate = 0, .bits_per_sample = 0, .block_align = 0, .data_offset = 0, .data_size = 0 };
+    var pos: u64 = 12;
+    const end = stream.getEndPos() catch 0;
+    while (pos + 8 <= end) {
+        // Read chunk header
+        stream.seekTo(pos) catch return error.ReadFailed;
+        const chdr = r.peek(8) catch return error.ReadFailed;
+        if (chdr.len < 8) return error.InvalidFormat;
+        const chunk_id = std.mem.readInt(u32, chdr[0..4], .little);
+        const chunk_size_u32 = std.mem.readInt(u32, chdr[4..8], .little);
+        const chunk_size: usize = @intCast(chunk_size_u32);
+        const payload_start = pos + 8;
+
+        if (chunk_id == WAV_FMT_MAGIC) {
+            // Read at least 16 bytes of fmt
+            stream.seekTo(payload_start) catch return error.ReadFailed;
+            const need = 16;
+            const fmtv = r.peek(need) catch return error.ReadFailed;
+            if (fmtv.len < need) return error.InvalidFormat;
+            info.audio_format = std.mem.readInt(u16, fmtv[0..2], .little);
+            info.channels = std.mem.readInt(u16, fmtv[2..4], .little);
+            info.sample_rate = std.mem.readInt(u32, fmtv[4..8], .little);
+            info.block_align = std.mem.readInt(u16, fmtv[12..14], .little);
+            info.bits_per_sample = std.mem.readInt(u16, fmtv[14..16], .little);
+        } else if (chunk_id == WAV_DATA_MAGIC) {
+            info.data_offset = @intCast(payload_start);
+            info.data_size = chunk_size;
+        }
+
+        // advance to next chunk (even alignment)
+        var next: u64 = payload_start + @as(u64, chunk_size);
+        if ((chunk_size % 2) != 0) next += 1;
+        pos = next;
+
+        if (info.channels != 0 and info.sample_rate != 0 and info.bits_per_sample != 0 and info.block_align != 0 and info.data_size != 0) {
+            break;
+        }
+    }
+    if (info.channels == 0 or info.sample_rate == 0 or info.bits_per_sample == 0 or info.block_align == 0 or info.data_size == 0) return error.InvalidFormat;
+
+    // Seek to data start
+    stream.seekTo(@intCast(info.data_offset)) catch |e| switch (e) {
+        error.Unseekable => return error.ReadFailed,
+        else => return error.ReadFailed,
+    };
+
+    const ctx = try allocator.create(WavStreamCtx);
+    ctx.* = .{
+        .allocator = allocator,
+        .stream = stream,
+        .info = info,
+        .bytes_remaining = info.data_size,
+    };
+
+    const any = try allocator.create(fapi.AnyStreamDecoder);
+    any.* = .{
+        .vtable = &wav_stream_vtable,
+        .context = ctx,
+        .info = .{
+            .sample_rate = info.sample_rate,
+            .channels = @intCast(info.channels),
+            .sample_type = .i16,
+            .total_frames = info.data_size / info.block_align,
+        },
+    };
+    return any;
+}
