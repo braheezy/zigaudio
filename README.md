@@ -14,6 +14,7 @@ A Zig library for reading and writing audio files with a streaming-capable, form
 |--------|------|-------|
 | QOA    | ✅   | ✅    |
 | WAV    | ✅   | ❌    |
+| MP3    | 🚧   | ❌    |
 
 ## Installation
 

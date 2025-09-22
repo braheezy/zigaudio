@@ -1,15 +1,17 @@
 const std = @import("std");
 const qoa = @import("qoa.zig");
 const wav = @import("wav.zig");
+const mp3 = @import("mp3.zig");
 const api = @import("root.zig");
 const io = @import("io.zig");
 
 pub const supported_formats: []const VTable = &[_]VTable{
     qoa.vtable,
     wav.vtable,
+    mp3.vtable,
 };
 
-pub const Id = enum { unknown, qoa, wav };
+pub const Id = enum { unknown, qoa, wav, mp3 };
 
 pub const ProbeFn = *const fn (stream: *io.ReadStream) api.ReadError!bool;
 pub const InfoReaderFn = *const fn (stream: *io.ReadStream) api.ReadError!api.AudioInfo;
