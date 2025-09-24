@@ -6,18 +6,18 @@ fn generateImdctWinData() [4][36]f32 {
 
     // Window 0: sin(π/36 * (i + 0.5)) for all 36 elements
     for (0..36) |i| {
-        data[0][i] = @sin(std.math.pi / 36.0 * (@as(f32, @floatFromInt(i)) + 0.5));
+        data[0][i] = @floatCast(@sin(std.math.pi / 36.0 * (@as(f64, @floatFromInt(i)) + 0.5)));
     }
 
     // Window 1: Complex pattern
     for (0..18) |i| {
-        data[1][i] = @sin(std.math.pi / 36.0 * (@as(f32, @floatFromInt(i)) + 0.5));
+        data[1][i] = @floatCast(@sin(std.math.pi / 36.0 * (@as(f64, @floatFromInt(i)) + 0.5)));
     }
     for (18..24) |i| {
         data[1][i] = 1.0;
     }
     for (24..30) |i| {
-        data[1][i] = @sin(std.math.pi / 12.0 * (@as(f32, @floatFromInt(i)) + 0.5 - 18.0));
+        data[1][i] = @floatCast(@sin(std.math.pi / 12.0 * (@as(f64, @floatFromInt(i)) + 0.5 - 18.0)));
     }
     for (30..36) |i| {
         data[1][i] = 0.0;
@@ -25,7 +25,7 @@ fn generateImdctWinData() [4][36]f32 {
 
     // Window 2: sin(π/12 * (i + 0.5)) for first 12, then zeros
     for (0..12) |i| {
-        data[2][i] = @sin(std.math.pi / 12.0 * (@as(f32, @floatFromInt(i)) + 0.5));
+        data[2][i] = @floatCast(@sin(std.math.pi / 12.0 * (@as(f64, @floatFromInt(i)) + 0.5)));
     }
     for (12..36) |i| {
         data[2][i] = 0.0;
@@ -36,13 +36,13 @@ fn generateImdctWinData() [4][36]f32 {
         data[3][i] = 0.0;
     }
     for (6..12) |i| {
-        data[3][i] = @sin(std.math.pi / 12.0 * (@as(f32, @floatFromInt(i)) + 0.5 - 6.0));
+        data[3][i] = @floatCast(@sin(std.math.pi / 12.0 * (@as(f64, @floatFromInt(i)) + 0.5 - 6.0)));
     }
     for (12..18) |i| {
         data[3][i] = 1.0;
     }
     for (18..36) |i| {
-        data[3][i] = @sin(std.math.pi / 36.0 * (@as(f32, @floatFromInt(i)) + 0.5));
+        data[3][i] = @floatCast(@sin(std.math.pi / 36.0 * (@as(f64, @floatFromInt(i)) + 0.5)));
     }
 
     return data;
@@ -55,9 +55,9 @@ fn generateCosN12() [6][12]f32 {
 
     for (0..6) |i| {
         for (0..12) |j| {
-            const i_f = @as(f32, @floatFromInt(i));
-            const j_f = @as(f32, @floatFromInt(j));
-            data[i][j] = @cos(std.math.pi / (2.0 * N) * (2.0 * j_f + 1.0 + N / 2.0) * (2.0 * i_f + 1.0));
+            const i_f = @as(f64, @floatFromInt(i));
+            const j_f = @as(f64, @floatFromInt(j));
+            data[i][j] = @floatCast(@cos(std.math.pi / (2.0 * N) * (2.0 * j_f + 1.0 + N / 2.0) * (2.0 * i_f + 1.0)));
         }
     }
 
@@ -70,9 +70,9 @@ fn generateCosN36() [18][36]f32 {
 
     for (0..18) |i| {
         for (0..36) |j| {
-            const i_f = @as(f32, @floatFromInt(i));
-            const j_f = @as(f32, @floatFromInt(j));
-            data[i][j] = @cos(std.math.pi / (2.0 * N) * (2.0 * j_f + 1.0 + N / 2.0) * (2.0 * i_f + 1.0));
+            const i_f = @as(f64, @floatFromInt(i));
+            const j_f = @as(f64, @floatFromInt(j));
+            data[i][j] = @floatCast(@cos(std.math.pi / (2.0 * N) * (2.0 * j_f + 1.0 + N / 2.0) * (2.0 * i_f + 1.0)));
         }
     }
 

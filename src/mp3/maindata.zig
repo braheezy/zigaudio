@@ -279,8 +279,10 @@ fn readHuffman(
         region_1_start = 36; // sfb[9/3]*3=36
         region_2_start = SAMPLES_PER_GR; // No Region2 for short block case.
     } else {
+        // Select scalefactor band indices by (lsf, samplingFrequency) for Layer III
         const lsf = header.lowSamplingFrequency();
-        const l = mp3.sf_band_indices[@intFromBool(lsf)][2][SF_BAND_INDICES_LONG]; // Layer 3 = index 2
+        const sfreq_index: usize = @intCast(header.samplingFrequency());
+        const l = mp3.sf_band_indices[@intFromBool(lsf)][sfreq_index][SF_BAND_INDICES_LONG];
         const i = side_info.region0_count[gr][ch] + 1;
         if (i < 0 or i >= l.len) {
             return error.InvalidIndex;
@@ -295,7 +297,7 @@ fn readHuffman(
 
     // Read big_values using tables according to region_x_start
     var is_pos: usize = 0;
-    while (is_pos < side_info.big_values[gr][ch] * 2) {
+    while (is_pos < @as(usize, side_info.big_values[gr][ch]) * 2) {
         if (is_pos >= md.is[gr][ch].len) {
             return error.InvalidPosition;
         }
@@ -321,7 +323,7 @@ fn readHuffman(
 
     // Read small values until is_pos = 576 or we run out of huffman data
     const table_num = @as(u8, @intCast(side_info.count1_table_select[gr][ch] + @as(u8, 32)));
-    is_pos = side_info.big_values[gr][ch] * 2;
+    is_pos = @as(usize, side_info.big_values[gr][ch]) * 2;
 
     while (is_pos <= 572 and m.bitPosition() <= bit_pos_end) {
         // Get next Huffman coded words
@@ -367,14 +369,18 @@ fn readHuffman(
     m.setPosition(bit_pos_end + 1);
 }
 
-// Public function to read main data from a source
+pub const ReadFullResult = struct {
+    main_data: MainData,
+    bits: bits.Bits,
+};
+
 pub fn readFull(
     allocator: std.mem.Allocator,
     source: *std.Io.Reader,
     prev: ?*bits.Bits,
     header: frameheader.FrameHeader,
     side_info: *sideinfo.SideInfo,
-) !MainData {
+) !ReadFullResult {
     const nch = header.numberOfChannels();
 
     // Calculate header audio data size
@@ -398,9 +404,11 @@ pub fn readFull(
     var m = try read(allocator, source, prev, main_data_size, side_info.main_data_begin);
 
     if (header.lowSamplingFrequency()) {
-        return try getScaleFactorsMpeg2(allocator, &m, header, side_info);
+        const md = try getScaleFactorsMpeg2(allocator, &m, header, side_info);
+        return .{ .main_data = md, .bits = m };
     }
-    return try getScaleFactorsMpeg1(nch, &m, header, side_info);
+    const md = try getScaleFactorsMpeg1(nch, &m, header, side_info);
+    return .{ .main_data = md, .bits = m };
 }
 
 // Private function to read main data with reservoir handling

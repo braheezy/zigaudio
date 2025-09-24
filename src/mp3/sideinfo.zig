@@ -21,13 +21,15 @@ pub const SideInfo = struct {
     table_select: [2][2][3]u5 = undefined, // 5 bits
     subblock_gain: [2][2][3]u3 = undefined, // 3 bits
 
-    region0_count: [2][2]u4 = undefined, // 4 bits
-    region1_count: [2][2]u3 = undefined, // 3 bits
+    // Stored as u8 to allow implicit values > 7 when switched window is set
+    region0_count: [2][2]u8 = undefined, // read from 4 bits or implicit 7/8
+    region1_count: [2][2]u8 = undefined, // read from 3 bits or implicit 12/13
 
     preflag: [2][2]u1 = undefined, // 1 bit
     scalefac_scale: [2][2]u1 = undefined, // 1 bit
     count1_table_select: [2][2]u1 = undefined, // 1 bit
-    count1: [2][2]u1 = undefined, // Not in file, calc by huffman decoder
+    // Not in file; computed by Huffman decoder. Needs enough bits to hold 0..576
+    count1: [2][2]u16 = undefined,
 };
 
 const side_info_bits_to_read = [2][4]u8{
@@ -116,7 +118,7 @@ pub fn readAll(allocator: std.mem.Allocator, reader: *std.Io.Reader, header: fra
                 }
                 // The standard is wrong on this!!!
                 // Implicit
-                si.region1_count[gr][ch] = @intCast(20 - @as(u8, si.region0_count[gr][ch]));
+                si.region1_count[gr][ch] = @intCast(20 - si.region0_count[gr][ch]);
             } else {
                 for (0..3) |region| {
                     si.table_select[gr][ch][region] = @intCast(bit_reader.bits(5));
@@ -125,7 +127,8 @@ pub fn readAll(allocator: std.mem.Allocator, reader: *std.Io.Reader, header: fra
                 si.region1_count[gr][ch] = @intCast(bit_reader.bits(3));
                 si.block_type[gr][ch] = 0; // Implicit
                 if (!mpeg1_frame) {
-                    si.mixed_block_flag[0][ch] = 0;
+                    // For MPEG-2/2.5, mixed_block_flag is implicitly 0 for this granule/channel
+                    si.mixed_block_flag[gr][ch] = 0;
                 }
             }
 
