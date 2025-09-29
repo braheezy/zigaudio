@@ -38,10 +38,19 @@ pub const AudioInfo = struct {
     sample_type: SampleType,
     // Total PCM frames in the stream when known (0 if unknown/streaming).
     total_frames: usize,
+    // Duration in seconds when known (0.0 if unknown/streaming).
+    duration_seconds: f64,
 
     ///! Returns byte size of one interleaved PCM frame for this info.
     pub fn bytesPerFrame(self: AudioInfo) usize {
         return (SampleFormat{ .sample_type = self.sample_type, .channel_count = self.channels }).bytesPerFrame();
+    }
+
+    ///! Returns duration in seconds, calculating from total_frames if duration_seconds is 0.
+    pub fn getDurationSeconds(self: AudioInfo) f64 {
+        if (self.duration_seconds > 0.0) return self.duration_seconds;
+        if (self.sample_rate == 0 or self.total_frames == 0) return 0.0;
+        return @as(f64, @floatFromInt(self.total_frames)) / @as(f64, @floatFromInt(self.sample_rate));
     }
 };
 
@@ -623,4 +632,5 @@ test {
     @import("std").testing.refAllDecls(@This());
     _ = @import("qoa_test.zig");
     _ = @import("wav_test.zig");
+    _ = @import("mp3/tests.zig");
 }
