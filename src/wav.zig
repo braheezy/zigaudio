@@ -122,7 +122,7 @@ fn info_reader(stream: *io.ReadStream) api.ReadError!api.AudioInfo {
     }
     const info = found orelse return error.InvalidFormat;
     const total_frames: usize = if (info.data_size != 0 and info.block_align != 0) info.data_size / info.block_align else 0;
-    return .{ .sample_rate = info.sample_rate, .channels = @intCast(info.channels), .sample_type = .i16, .total_frames = total_frames };
+    return .{ .sample_rate = info.sample_rate, .channels = @intCast(info.channels), .sample_type = .i16, .total_frames = total_frames, .duration_seconds = 0.0 };
 }
 
 // Decode function - placeholder implementation
@@ -549,6 +549,7 @@ fn wav_open_stream(allocator: std.mem.Allocator, stream: *io.ReadStream) api.Rea
             .channels = @intCast(info.channels),
             .sample_type = .i16,
             .total_frames = info.data_size / info.block_align,
+            .duration_seconds = 0.0,
         },
     };
     return any;

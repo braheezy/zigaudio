@@ -401,6 +401,7 @@ fn qoa_open_stream(allocator: std.mem.Allocator, stream: *io.ReadStream) api.Rea
             .channels = @intCast(hdr.channels),
             .sample_type = .i16,
             .total_frames = hdr.sample_count,
+            .duration_seconds = 0.0,
         },
     };
     return any;
@@ -418,6 +419,7 @@ fn info_reader(stream: *io.ReadStream) api.ReadError!api.AudioInfo {
         .channels = @intCast(hdr.channels),
         .sample_type = .i16,
         .total_frames = hdr.sample_count,
+        .duration_seconds = 0.0,
     };
 }
 

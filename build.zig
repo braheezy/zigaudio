@@ -32,6 +32,9 @@ pub fn build(b: *std.Build) void {
         run_cmd.addArgs(args);
     }
 
+    const build_player_step = b.step("player", "Build the player example");
+    build_player_step.dependOn(&exe.step);
+
     const run_step = b.step("run", "Run the player example");
     run_step.dependOn(&run_cmd.step);
 

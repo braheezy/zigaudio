@@ -17,14 +17,16 @@ pub fn main() !void {
         _ = debug_allocator.deinit();
     };
 
-    const action = std.posix.Sigaction{
-        .handler = .{ .handler = handleSigInt },
-        .mask = std.posix.sigemptyset(),
-        .flags = 0,
-    };
-    std.posix.sigaction(std.posix.SIG.INT, &action, null);
-    std.posix.sigaction(std.posix.SIG.TERM, &action, null);
-    std.posix.sigaction(std.posix.SIG.USR1, &action, null);
+    if (builtin.os.tag != .windows) {
+        const action = std.posix.Sigaction{
+            .handler = .{ .handler = handleSigInt },
+            .mask = std.posix.sigemptyset(),
+            .flags = 0,
+        };
+        std.posix.sigaction(std.posix.SIG.INT, &action, null);
+        std.posix.sigaction(std.posix.SIG.TERM, &action, null);
+        std.posix.sigaction(std.posix.SIG.USR1, &action, null);
+    }
 
     var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
@@ -90,7 +92,6 @@ pub fn main() !void {
         } else {
             std.debug.print("  Duration: {d}s\n", .{total_seconds});
         }
-
         const options = zoto.ContextOptions{
             .sample_rate = pcm.params.sample_rate,
             .channel_count = pcm.params.channels,
@@ -142,10 +143,11 @@ pub fn main() !void {
     defer stream.deinit();
 
     // Calculate duration
-    const samples_per_frame: u64 = 1152;
-    const total_pcm_samples = stream.info.total_frames * samples_per_frame;
-    const total_seconds_f = @as(f64, @floatFromInt(total_pcm_samples)) / @as(f64, @floatFromInt(stream.info.sample_rate));
+    const total_seconds_f = stream.info.getDurationSeconds();
     const total_seconds: u64 = @intFromFloat(@floor(total_seconds_f));
+
+    // Print platform
+    std.debug.print("Platform: {s}\n", .{@tagName(builtin.os.tag)});
 
     // Display clean audio info
     std.debug.print("Playing: {s}\n", .{if (play_from_memory) "embedded audio" else audio_path.?});
