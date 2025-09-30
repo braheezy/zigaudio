@@ -128,6 +128,50 @@ pub fn main() !void {
             };
         } else {
             const path = audio_path.?;
+
+            const use_full_decode = std.mem.endsWith(u8, path, ".aac") or std.mem.endsWith(u8, path, ".AAC");
+            if (use_full_decode) {
+                var file = try std.fs.cwd().openFile(path, .{ .mode = .read_only });
+                defer file.close();
+
+                const input_bytes = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
+                defer allocator.free(input_bytes);
+
+                var pcm = zigaudio.decodeMemory(allocator, input_bytes) catch |e| switch (e) {
+                    error.Unsupported => {
+                        std.debug.print("unsupported format: {s}\n", .{path});
+                        return;
+                    },
+                    else => {
+                        std.debug.print("error: {}\n", .{e});
+                        return;
+                    },
+                };
+                defer pcm.deinit();
+
+                const options = zoto.ContextOptions{
+                    .sample_rate = pcm.params.sample_rate,
+                    .channel_count = pcm.params.channels,
+                    .format = .int16_le,
+                };
+                const context = try zoto.newContext(allocator, options);
+                defer context.deinit();
+
+                context.waitForReady();
+
+                var fixed_reader = std.Io.Reader.fixed(pcm.data);
+                const player = try context.newPlayer(&fixed_reader);
+                defer player.deinit();
+
+                std.debug.print("Starting playback (full decode AAC)...\n", .{});
+                try player.play();
+                while (player.isPlaying()) {
+                    std.Thread.sleep(std.time.ns_per_ms * 25);
+                }
+                std.debug.print("Playback finished.\n", .{});
+                return;
+            }
+
             break :blk zigaudio.fromPath(allocator, path) catch |e| switch (e) {
                 error.Unsupported => {
                     std.debug.print("unsupported format: {s}\n", .{path});
@@ -140,7 +184,6 @@ pub fn main() !void {
             };
         }
     };
-    defer stream.deinit();
 
     // Calculate duration
     const total_seconds_f = stream.info.getDurationSeconds();

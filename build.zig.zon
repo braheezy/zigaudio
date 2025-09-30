@@ -8,6 +8,9 @@
             .url = "git+https://github.com/braheezy/zoto#2c47b249b0cbe4619206c02c1749f699a30c0282",
             .hash = "zoto-0.0.0-Eh0DjGRIAQCodXdNG_ZX0r8atQgadtSdkVmvFMDbWpZR",
         },
+        .faad2 = .{
+            .path = "faad2",
+        },
     },
     .paths = .{
         "build.zig",

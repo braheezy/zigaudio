@@ -16,7 +16,7 @@ pub const Error = error{
 };
 
 ///! Error set for read/streaming APIs.
-pub const ReadError = Error || std.mem.Allocator.Error || std.fs.File.OpenError || error{
+pub const ReadError = Error || std.mem.Allocator.Error || std.fs.File.ReadError || std.fs.File.SeekError || std.fs.File.OpenError || error{
     EndOfStream,
     StreamTooLong,
     ReadFailed,
