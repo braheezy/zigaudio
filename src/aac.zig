@@ -291,9 +291,14 @@ fn stream_read(dec: *fapi.AnyStreamDecoder, dst: []u8) api.ReadError!usize {
         const reader = self.stream.reader();
         var temp_buffer: [4096]u8 = undefined;
         var tmp: [1][]u8 = .{&temp_buffer};
-        const bytes_read = reader.readVec(&tmp) catch return 0;
+        const bytes_read = reader.readVec(&tmp) catch |e| switch (e) {
+            error.EndOfStream => return 0,
+            else => return error.ReadFailed,
+        };
         if (bytes_read > 0) {
-            self.buffer.appendSlice(self.allocator, temp_buffer[0..bytes_read]) catch return 0;
+            self.buffer.appendSlice(self.allocator, temp_buffer[0..bytes_read]) catch return error.ReadFailed;
+        } else {
+            return 0;
         }
     }
 
@@ -338,6 +343,14 @@ fn stream_read(dec: *fapi.AnyStreamDecoder, dst: []u8) api.ReadError!usize {
 
     // Handle errors
     if (@field(frame_info, "err") != 0) {
+        const error_code = @field(frame_info, "err");
+
+        // If we get a syntax error and have very little data left, we've likely reached the end
+        if (error_code == 13 and self.buffer.items.len < 2048) {
+            self.buffer.clearRetainingCapacity();
+            return 0;
+        }
+
         return 0;
     }
 
@@ -345,6 +358,16 @@ fn stream_read(dec: *fapi.AnyStreamDecoder, dst: []u8) api.ReadError!usize {
     if (frame_info.bytesconsumed > 0) {
         std.mem.copyForwards(u8, self.buffer.items, self.buffer.items[frame_info.bytesconsumed..]);
         self.buffer.shrinkRetainingCapacity(self.buffer.items.len - frame_info.bytesconsumed);
+    } else {
+        // If no bytes were consumed, we must advance by at least 1 byte to prevent an infinite loop.
+        // This can happen if the decoder cannot make sense of the current buffer.
+        // This mirrors behavior seen in faad2's frontend/main.c (advance_buffer function).
+        if (self.buffer.items.len > 0) {
+            std.mem.copyForwards(u8, self.buffer.items, self.buffer.items[1..]);
+            self.buffer.shrinkRetainingCapacity(self.buffer.items.len - 1);
+        } else {
+            return 0; // No more data to consume and buffer is empty
+        }
     }
 
     if (decoded_samples != null and frame_info.samples > 0) {
