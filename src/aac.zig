@@ -225,6 +225,7 @@ fn decode_from_bytes(allocator: std.mem.Allocator, bytes: []const u8) api.ReadEr
         },
         .data = std.mem.sliceAsBytes(try samples.toOwnedSlice(allocator)),
         .allocator = allocator,
+        .format_id = .aac,
     };
 }
 

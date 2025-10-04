@@ -252,6 +252,7 @@ fn wav_decode_from_bytes(allocator: std.mem.Allocator, bytes: []const u8) api.Re
         .params = .{ .sample_rate = info.sample_rate, .channels = @intCast(info.channels), .sample_type = .i16 },
         .data = out,
         .allocator = allocator,
+        .format_id = .wav,
     };
 }
 

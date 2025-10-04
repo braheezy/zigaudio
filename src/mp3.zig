@@ -385,6 +385,7 @@ pub fn decode_from_bytes(allocator: std.mem.Allocator, bytes: []const u8) api.Re
         .params = .{ .sample_rate = sr, .channels = ch, .sample_type = .i16 },
         .data = data,
         .allocator = allocator,
+        .format_id = .mp3,
     };
 }
 

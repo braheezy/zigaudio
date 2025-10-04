@@ -77,6 +77,7 @@ pub fn main() !void {
         defer pcm.deinit();
 
         std.debug.print("Audio Info:\n", .{});
+        std.debug.print("  Format: {s}\n", .{@tagName(pcm.format_id)});
         std.debug.print("  Sample Rate: {d} Hz\n", .{pcm.params.sample_rate});
         std.debug.print("  Channels: {d}\n", .{pcm.params.channels});
         std.debug.print("  Sample Type: {s}\n", .{@tagName(pcm.params.sample_type)});
@@ -141,6 +142,7 @@ pub fn main() !void {
             };
         }
     };
+    defer stream.deinit();
 
     // Calculate duration
     const total_seconds_f = stream.info.getDurationSeconds();
@@ -151,13 +153,17 @@ pub fn main() !void {
 
     // Display clean audio info
     std.debug.print("Playing: {s}\n", .{if (play_from_memory) "embedded audio" else audio_path.?});
-    std.debug.print("Format: {d} Hz, {d} channels, ", .{ stream.info.sample_rate, stream.info.channels });
-    if (total_seconds >= 60) {
-        const minutes: u64 = total_seconds / 60;
-        const seconds: u64 = total_seconds % 60;
-        std.debug.print("{d}m {d}s\n", .{ minutes, seconds });
+    std.debug.print("Format: {d} Hz, {d} channels", .{ stream.info.sample_rate, stream.info.channels });
+    if (total_seconds_f > 0.0) {
+        if (total_seconds >= 60) {
+            const minutes: u64 = total_seconds / 60;
+            const seconds: u64 = total_seconds % 60;
+            std.debug.print(", {d}m {d}s\n", .{ minutes, seconds });
+        } else {
+            std.debug.print(", {d}s\n", .{total_seconds});
+        }
     } else {
-        std.debug.print("{d}s\n", .{total_seconds});
+        std.debug.print(" (duration unknown)\n", .{});
     }
 
     const options = zoto.ContextOptions{

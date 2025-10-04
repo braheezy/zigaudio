@@ -453,6 +453,7 @@ fn qoa_decode_from_bytes(allocator: std.mem.Allocator, bytes: []const u8) api.Re
         .params = .{ .sample_rate = result.decoder.sample_rate, .channels = ch, .sample_type = .i16 },
         .data = data,
         .allocator = allocator,
+        .format_id = .qoa,
     };
 }
 

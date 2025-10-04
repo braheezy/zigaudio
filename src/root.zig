@@ -97,14 +97,15 @@ pub const Audio = struct {
     params: AudioParams,
     data: []u8,
     allocator: std.mem.Allocator,
+    format_id: format.Id,
 
     pub fn initEmpty(allocator: std.mem.Allocator, params: AudioParams) Audio {
-        return .{ .params = params, .data = &.{}, .allocator = allocator };
+        return .{ .params = params, .data = &.{}, .allocator = allocator, .format_id = .unknown };
     }
 
     pub fn deinit(self: *Audio) void {
         if (self.data.len != 0) self.allocator.free(self.data);
-        self.* = .{ .params = self.params, .data = &.{}, .allocator = self.allocator };
+        self.* = .{ .params = self.params, .data = &.{}, .allocator = self.allocator, .format_id = self.format_id };
     }
 
     pub fn frameBytes(self: *const Audio) usize {
@@ -169,7 +170,7 @@ pub const ManagedAudioStream = struct {
 
     /// Releases all resources owned by the stream. Must be called.
     pub fn deinit(self: *ManagedAudioStream) void {
-        self.decoder.deinit();
+        self.decoder.deinit(); // Decoder deinit destroys itself
         self.allocator.free(self.buffer);
         if (self.input_buffer.len != 0) self.allocator.free(self.input_buffer);
         if (self.file) |*f| f.close();
@@ -298,7 +299,7 @@ pub const AudioStream = struct {
 };
 
 /// Probes a generic reader and returns the detected format id.
-pub fn probe(reader: *std.Io.Reader) ReadError!format.Id {
+pub fn probe(reader: *std.Io.Reader) !format.Id {
     for (format.supported_formats) |fmt| {
         var s = io.ReadStream{ .memory = reader.* };
         const is_match = fmt.probe(&s) catch |e| switch (e) {
@@ -311,7 +312,7 @@ pub fn probe(reader: *std.Io.Reader) ReadError!format.Id {
 }
 
 /// Fully decodes an entire stream into managed PCM `Audio`.
-pub fn decode(allocator: std.mem.Allocator, reader: *std.Io.Reader) ReadError!Audio {
+pub fn decode(allocator: std.mem.Allocator, reader: *std.Io.Reader) !Audio {
     var selected: ?format.VTable = null;
     for (format.supported_formats) |fmt| {
         var s = io.ReadStream{ .memory = reader.* };
@@ -357,18 +358,20 @@ pub fn decode(allocator: std.mem.Allocator, reader: *std.Io.Reader) ReadError!Au
         }
 
         const slice = data[0..len];
-        return fmt_tbl.decode_from_bytes(allocator, slice);
+        var audio = try fmt_tbl.decode_from_bytes(allocator, slice);
+        audio.format_id = fmt_tbl.id;
+        return audio;
     } else return error.Unsupported;
 }
 
 /// Encodes managed PCM `Audio` to a writer using the given format.
-pub fn encodeToWriter(format_id: format.Id, writer: *std.Io.Writer, audio: *const Audio) WriteError!void {
+pub fn encodeToWriter(format_id: format.Id, writer: *std.Io.Writer, audio: *const Audio) !void {
     const fmt = findFormatById(format_id) orelse return error.Unsupported;
     return fmt.encode(writer, audio);
 }
 
 /// Encodes managed PCM `Audio` directly to a file path using the given format.
-pub fn encodeToPath(format_id: format.Id, path: []const u8, audio: *const Audio) WriteError!void {
+pub fn encodeToPath(format_id: format.Id, path: []const u8, audio: *const Audio) !void {
     var file = std.fs.cwd().createFile(path, .{ .truncate = true }) catch return error.WriteFailed;
     defer file.close();
     // Bypass buffered writer to avoid partial flush issues: write directly to file
@@ -420,7 +423,7 @@ pub fn fromPathWithBuffer(allocator: std.mem.Allocator, path: []const u8, out_bu
     };
 }
 /// Unmanaged stream: caller supplies both input and output buffers and owns them.
-pub fn fromPathUnmanaged(path: []const u8, input_buffer: []u8, output_buffer: []u8) ReadError!AudioStream {
+pub fn fromPathUnmanaged(path: []const u8, input_buffer: []u8, output_buffer: []u8) !AudioStream {
     const file = std.fs.cwd().openFile(path, .{ .mode = .read_only }) catch |e| switch (e) {
         error.FileNotFound => return error.FileNotFound,
         else => return error.ReadFailed,
@@ -432,7 +435,7 @@ pub fn fromPathUnmanaged(path: []const u8, input_buffer: []u8, output_buffer: []
 }
 
 /// Convenience: open a streaming handle with an internal buffer.
-pub fn fromPath(allocator: std.mem.Allocator, path: []const u8) ReadError!ManagedAudioStream {
+pub fn fromPath(allocator: std.mem.Allocator, path: []const u8) !ManagedAudioStream {
     const file = std.fs.cwd().openFile(path, .{ .mode = .read_only }) catch |e| switch (e) {
         error.FileNotFound => return error.FileNotFound,
         else => return error.ReadFailed,
@@ -460,7 +463,7 @@ pub fn fromPath(allocator: std.mem.Allocator, path: []const u8) ReadError!Manage
 }
 
 /// Fully decode a file at path into managed PCM `Audio`.
-pub fn decodePath(allocator: std.mem.Allocator, path: []const u8) ReadError!Audio {
+pub fn decodePath(allocator: std.mem.Allocator, path: []const u8) !Audio {
     var file = std.fs.cwd().openFile(path, .{ .mode = .read_only }) catch |e| switch (e) {
         error.FileNotFound => return error.FileNotFound,
         else => return error.ReadFailed,
@@ -475,7 +478,7 @@ pub fn decodePath(allocator: std.mem.Allocator, path: []const u8) ReadError!Audi
 /// High-level: open an in-memory buffer as a streaming PCM source.
 /// Test-only helper retained for compatibility: open from embedded bytes.
 /// Not intended for downstream callers; prefer `fromPath(..., .{ .mode = .stream })`.
-pub fn fromMemory(allocator: std.mem.Allocator, bytes: []const u8) ReadError!ManagedAudioStream {
+pub fn fromMemory(allocator: std.mem.Allocator, bytes: []const u8) !ManagedAudioStream {
     const buf = try allocator.alloc(u8, DEFAULT_STREAM_BUFFER_SIZE);
     errdefer allocator.free(buf);
     const stream_local = io.ReadStream.initMemory(bytes);
@@ -488,7 +491,7 @@ pub fn fromMemory(allocator: std.mem.Allocator, bytes: []const u8) ReadError!Man
 }
 
 /// Convenience: fully decode in-memory bytes to managed PCM `Audio`.
-pub fn decodeMemory(allocator: std.mem.Allocator, bytes: []const u8) ReadError!Audio {
+pub fn decodeMemory(allocator: std.mem.Allocator, bytes: []const u8) !Audio {
     var r = std.Io.Reader.fixed(bytes);
     return try decode(allocator, &r);
 }
@@ -537,7 +540,7 @@ const memory_stream_vtable: StreamDecoderVTable = .{
 };
 
 /// Opens a true streaming decoder over an input `ReadStream`.
-fn openStreamDecoder(allocator: std.mem.Allocator, reader: *io.ReadStream) ReadError!*AnyStreamDecoder {
+fn openStreamDecoder(allocator: std.mem.Allocator, reader: *io.ReadStream) !*AnyStreamDecoder {
     // Select format using streaming probe
     var selected: ?format.VTable = null;
     for (format.supported_formats) |fmt| {
@@ -632,5 +635,6 @@ test {
     @import("std").testing.refAllDecls(@This());
     _ = @import("qoa_test.zig");
     _ = @import("wav_test.zig");
+    _ = @import("vorbis_test.zig");
     _ = @import("mp3/tests.zig");
 }
