@@ -1,48 +1,12 @@
 const std = @import("std");
-pub const __builtin_object_size = @import("std").zig.c_builtins.__builtin_object_size;
-pub const __builtin___memset_chk = @import("std").zig.c_builtins.__builtin___memset_chk;
-pub const __builtin___memcpy_chk = @import("std").zig.c_builtins.__builtin___memcpy_chk;
-pub const __builtin_expect = @import("std").zig.c_builtins.__builtin_expect;
-pub const __int64_t = c_longlong;
-pub const __darwin_off_t = __int64_t;
-pub const fpos_t = __darwin_off_t;
-pub const struct___sbuf = extern struct {
-    _base: [*c]u8 = @import("std").mem.zeroes([*c]u8),
-    _size: c_int = @import("std").mem.zeroes(c_int),
-};
-pub const struct___sFILEX = opaque {};
-pub const struct___sFILE = extern struct {
-    _p: [*c]u8 = @import("std").mem.zeroes([*c]u8),
-    _r: c_int = @import("std").mem.zeroes(c_int),
-    _w: c_int = @import("std").mem.zeroes(c_int),
-    _flags: c_short = @import("std").mem.zeroes(c_short),
-    _file: c_short = @import("std").mem.zeroes(c_short),
-    _bf: struct___sbuf = @import("std").mem.zeroes(struct___sbuf),
-    _lbfsize: c_int = @import("std").mem.zeroes(c_int),
-    _cookie: ?*anyopaque = @import("std").mem.zeroes(?*anyopaque),
-    _close: ?*const fn (?*anyopaque) callconv(.c) c_int = @import("std").mem.zeroes(?*const fn (?*anyopaque) callconv(.c) c_int),
-    _read: ?*const fn (?*anyopaque, [*c]u8, c_int) callconv(.c) c_int = @import("std").mem.zeroes(?*const fn (?*anyopaque, [*c]u8, c_int) callconv(.c) c_int),
-    _seek: ?*const fn (?*anyopaque, fpos_t, c_int) callconv(.c) fpos_t = @import("std").mem.zeroes(?*const fn (?*anyopaque, fpos_t, c_int) callconv(.c) fpos_t),
-    _write: ?*const fn (?*anyopaque, [*c]const u8, c_int) callconv(.c) c_int = @import("std").mem.zeroes(?*const fn (?*anyopaque, [*c]const u8, c_int) callconv(.c) c_int),
-    _ub: struct___sbuf = @import("std").mem.zeroes(struct___sbuf),
-    _extra: ?*struct___sFILEX = @import("std").mem.zeroes(?*struct___sFILEX),
-    _ur: c_int = @import("std").mem.zeroes(c_int),
-    _ubuf: [3]u8 = @import("std").mem.zeroes([3]u8),
-    _nbuf: [1]u8 = @import("std").mem.zeroes([1]u8),
-    _lb: struct___sbuf = @import("std").mem.zeroes(struct___sbuf),
-    _blksize: c_int = @import("std").mem.zeroes(c_int),
-    _offset: fpos_t = @import("std").mem.zeroes(fpos_t),
-};
-pub const FILE = struct___sFILE;
-pub extern fn fclose([*c]FILE) c_int;
-pub extern fn fgetc([*c]FILE) c_int;
-pub extern fn fopen(__filename: [*c]const u8, __mode: [*c]const u8) [*c]FILE;
-pub extern fn fread(__ptr: ?*anyopaque, __size: c_ulong, __nitems: c_ulong, __stream: [*c]FILE) c_ulong;
-pub extern fn fseek([*c]FILE, c_long, c_int) c_int;
-pub extern fn ftell([*c]FILE) c_long;
+
+pub const __builtin_object_size = std.zig.c_builtins.__builtin_object_size;
+pub const __builtin___memset_chk = std.zig.c_builtins.__builtin___memset_chk;
+pub const __builtin___memcpy_chk = std.zig.c_builtins.__builtin___memcpy_chk;
+pub const __builtin_expect = std.zig.c_builtins.__builtin_expect;
 pub const stb_vorbis_alloc = extern struct {
-    alloc_buffer: [*c]u8 = @import("std").mem.zeroes([*c]u8),
-    alloc_buffer_length_in_bytes: c_int = @import("std").mem.zeroes(c_int),
+    alloc_buffer: [*c]u8 = std.mem.zeroes([*c]u8),
+    alloc_buffer_length_in_bytes: c_int = std.mem.zeroes(c_int),
 };
 pub const uint32 = c_uint;
 pub const uint8 = u8;
@@ -71,93 +35,92 @@ pub const enum_STBVorbisError = c_uint;
 pub const uint16 = c_ushort;
 pub const int16 = c_short;
 pub const struct_stb_vorbis = extern struct {
-    sample_rate: c_uint = @import("std").mem.zeroes(c_uint),
-    channels: c_int = @import("std").mem.zeroes(c_int),
-    setup_memory_required: c_uint = @import("std").mem.zeroes(c_uint),
-    temp_memory_required: c_uint = @import("std").mem.zeroes(c_uint),
-    setup_temp_memory_required: c_uint = @import("std").mem.zeroes(c_uint),
-    vendor: [*c]u8 = @import("std").mem.zeroes([*c]u8),
-    comment_list_length: c_int = @import("std").mem.zeroes(c_int),
-    comment_list: [*c][*c]u8 = @import("std").mem.zeroes([*c][*c]u8),
-    f: [*c]FILE = @import("std").mem.zeroes([*c]FILE),
-    f_start: uint32 = @import("std").mem.zeroes(uint32),
-    close_on_free: c_int = @import("std").mem.zeroes(c_int),
-    stream: [*c]uint8 = @import("std").mem.zeroes([*c]uint8),
-    stream_start: [*c]uint8 = @import("std").mem.zeroes([*c]uint8),
-    stream_end: [*c]uint8 = @import("std").mem.zeroes([*c]uint8),
-    stream_len: uint32 = @import("std").mem.zeroes(uint32),
-    push_mode: uint8 = @import("std").mem.zeroes(uint8),
-    first_audio_page_offset: uint32 = @import("std").mem.zeroes(uint32),
-    p_first: ProbedPage = @import("std").mem.zeroes(ProbedPage),
-    p_last: ProbedPage = @import("std").mem.zeroes(ProbedPage),
-    alloc: stb_vorbis_alloc = @import("std").mem.zeroes(stb_vorbis_alloc),
-    setup_offset: c_int = @import("std").mem.zeroes(c_int),
-    temp_offset: c_int = @import("std").mem.zeroes(c_int),
-    eof: c_int = @import("std").mem.zeroes(c_int),
-    @"error": enum_STBVorbisError = @import("std").mem.zeroes(enum_STBVorbisError),
-    blocksize: [2]c_int = @import("std").mem.zeroes([2]c_int),
-    blocksize_0: c_int = @import("std").mem.zeroes(c_int),
-    blocksize_1: c_int = @import("std").mem.zeroes(c_int),
-    codebook_count: c_int = @import("std").mem.zeroes(c_int),
-    codebooks: [*c]Codebook = @import("std").mem.zeroes([*c]Codebook),
-    floor_count: c_int = @import("std").mem.zeroes(c_int),
-    floor_types: [64]uint16 = @import("std").mem.zeroes([64]uint16),
-    floor_config: [*c]Floor = @import("std").mem.zeroes([*c]Floor),
-    residue_count: c_int = @import("std").mem.zeroes(c_int),
-    residue_types: [64]uint16 = @import("std").mem.zeroes([64]uint16),
-    residue_config: [*c]Residue = @import("std").mem.zeroes([*c]Residue),
-    mapping_count: c_int = @import("std").mem.zeroes(c_int),
-    mapping: [*c]Mapping = @import("std").mem.zeroes([*c]Mapping),
-    mode_count: c_int = @import("std").mem.zeroes(c_int),
-    mode_config: [64]Mode = @import("std").mem.zeroes([64]Mode),
-    total_samples: uint32 = @import("std").mem.zeroes(uint32),
-    channel_buffers: [16][*c]f32 = @import("std").mem.zeroes([16][*c]f32),
-    outputs: [16][*c]f32 = @import("std").mem.zeroes([16][*c]f32),
-    previous_window: [16][*c]f32 = @import("std").mem.zeroes([16][*c]f32),
-    previous_length: c_int = @import("std").mem.zeroes(c_int),
-    finalY: [16][*c]int16 = @import("std").mem.zeroes([16][*c]int16),
-    current_loc: uint32 = @import("std").mem.zeroes(uint32),
-    current_loc_valid: c_int = @import("std").mem.zeroes(c_int),
-    A: [2][*c]f32 = @import("std").mem.zeroes([2][*c]f32),
-    B: [2][*c]f32 = @import("std").mem.zeroes([2][*c]f32),
-    C: [2][*c]f32 = @import("std").mem.zeroes([2][*c]f32),
-    window: [2][*c]f32 = @import("std").mem.zeroes([2][*c]f32),
-    bit_reverse: [2][*c]uint16 = @import("std").mem.zeroes([2][*c]uint16),
-    serial: uint32 = @import("std").mem.zeroes(uint32),
-    last_page: c_int = @import("std").mem.zeroes(c_int),
-    segment_count: c_int = @import("std").mem.zeroes(c_int),
-    segments: [255]uint8 = @import("std").mem.zeroes([255]uint8),
-    page_flag: uint8 = @import("std").mem.zeroes(uint8),
-    bytes_in_seg: uint8 = @import("std").mem.zeroes(uint8),
-    first_decode: uint8 = @import("std").mem.zeroes(uint8),
-    next_seg: c_int = @import("std").mem.zeroes(c_int),
-    last_seg: c_int = @import("std").mem.zeroes(c_int),
-    last_seg_which: c_int = @import("std").mem.zeroes(c_int),
-    acc: uint32 = @import("std").mem.zeroes(uint32),
-    valid_bits: c_int = @import("std").mem.zeroes(c_int),
-    packet_bytes: c_int = @import("std").mem.zeroes(c_int),
-    end_seg_with_known_loc: c_int = @import("std").mem.zeroes(c_int),
-    known_loc_for_packet: uint32 = @import("std").mem.zeroes(uint32),
-    discard_samples_deferred: c_int = @import("std").mem.zeroes(c_int),
-    samples_output: uint32 = @import("std").mem.zeroes(uint32),
-    page_crc_tests: c_int = @import("std").mem.zeroes(c_int),
-    scan: [4]CRCscan = @import("std").mem.zeroes([4]CRCscan),
-    channel_buffer_start: c_int = @import("std").mem.zeroes(c_int),
-    channel_buffer_end: c_int = @import("std").mem.zeroes(c_int),
+    sample_rate: c_uint = std.mem.zeroes(c_uint),
+    channels: c_int = std.mem.zeroes(c_int),
+    setup_memory_required: c_uint = std.mem.zeroes(c_uint),
+    temp_memory_required: c_uint = std.mem.zeroes(c_uint),
+    setup_temp_memory_required: c_uint = std.mem.zeroes(c_uint),
+    vendor: [*c]u8 = std.mem.zeroes([*c]u8),
+    comment_list_length: c_int = std.mem.zeroes(c_int),
+    comment_list: [*c][*c]u8 = std.mem.zeroes([*c][*c]u8),
+    f_start: uint32 = std.mem.zeroes(uint32),
+    close_on_free: c_int = std.mem.zeroes(c_int),
+    stream: [*c]uint8 = std.mem.zeroes([*c]uint8),
+    stream_start: [*c]uint8 = std.mem.zeroes([*c]uint8),
+    stream_end: [*c]uint8 = std.mem.zeroes([*c]uint8),
+    stream_len: uint32 = std.mem.zeroes(uint32),
+    push_mode: uint8 = std.mem.zeroes(uint8),
+    first_audio_page_offset: uint32 = std.mem.zeroes(uint32),
+    p_first: ProbedPage = std.mem.zeroes(ProbedPage),
+    p_last: ProbedPage = std.mem.zeroes(ProbedPage),
+    alloc: stb_vorbis_alloc = std.mem.zeroes(stb_vorbis_alloc),
+    setup_offset: c_int = std.mem.zeroes(c_int),
+    temp_offset: c_int = std.mem.zeroes(c_int),
+    eof: c_int = std.mem.zeroes(c_int),
+    @"error": enum_STBVorbisError = std.mem.zeroes(enum_STBVorbisError),
+    blocksize: [2]c_int = std.mem.zeroes([2]c_int),
+    blocksize_0: c_int = std.mem.zeroes(c_int),
+    blocksize_1: c_int = std.mem.zeroes(c_int),
+    codebook_count: c_int = std.mem.zeroes(c_int),
+    codebooks: [*c]Codebook = std.mem.zeroes([*c]Codebook),
+    floor_count: c_int = std.mem.zeroes(c_int),
+    floor_types: [64]uint16 = std.mem.zeroes([64]uint16),
+    floor_config: [*c]Floor = std.mem.zeroes([*c]Floor),
+    residue_count: c_int = std.mem.zeroes(c_int),
+    residue_types: [64]uint16 = std.mem.zeroes([64]uint16),
+    residue_config: [*c]Residue = std.mem.zeroes([*c]Residue),
+    mapping_count: c_int = std.mem.zeroes(c_int),
+    mapping: [*c]Mapping = std.mem.zeroes([*c]Mapping),
+    mode_count: c_int = std.mem.zeroes(c_int),
+    mode_config: [64]Mode = std.mem.zeroes([64]Mode),
+    total_samples: uint32 = std.mem.zeroes(uint32),
+    channel_buffers: [16][*c]f32 = std.mem.zeroes([16][*c]f32),
+    outputs: [16][*c]f32 = std.mem.zeroes([16][*c]f32),
+    previous_window: [16][*c]f32 = std.mem.zeroes([16][*c]f32),
+    previous_length: c_int = std.mem.zeroes(c_int),
+    finalY: [16][*c]int16 = std.mem.zeroes([16][*c]int16),
+    current_loc: uint32 = std.mem.zeroes(uint32),
+    current_loc_valid: c_int = std.mem.zeroes(c_int),
+    A: [2][*c]f32 = std.mem.zeroes([2][*c]f32),
+    B: [2][*c]f32 = std.mem.zeroes([2][*c]f32),
+    C: [2][*c]f32 = std.mem.zeroes([2][*c]f32),
+    window: [2][*c]f32 = std.mem.zeroes([2][*c]f32),
+    bit_reverse: [2][*c]uint16 = std.mem.zeroes([2][*c]uint16),
+    serial: uint32 = std.mem.zeroes(uint32),
+    last_page: c_int = std.mem.zeroes(c_int),
+    segment_count: c_int = std.mem.zeroes(c_int),
+    segments: [255]uint8 = std.mem.zeroes([255]uint8),
+    page_flag: uint8 = std.mem.zeroes(uint8),
+    bytes_in_seg: uint8 = std.mem.zeroes(uint8),
+    first_decode: uint8 = std.mem.zeroes(uint8),
+    next_seg: c_int = std.mem.zeroes(c_int),
+    last_seg: c_int = std.mem.zeroes(c_int),
+    last_seg_which: c_int = std.mem.zeroes(c_int),
+    acc: uint32 = std.mem.zeroes(uint32),
+    valid_bits: c_int = std.mem.zeroes(c_int),
+    packet_bytes: c_int = std.mem.zeroes(c_int),
+    end_seg_with_known_loc: c_int = std.mem.zeroes(c_int),
+    known_loc_for_packet: uint32 = std.mem.zeroes(uint32),
+    discard_samples_deferred: c_int = std.mem.zeroes(c_int),
+    samples_output: uint32 = std.mem.zeroes(uint32),
+    page_crc_tests: c_int = std.mem.zeroes(c_int),
+    scan: [4]CRCscan = std.mem.zeroes([4]CRCscan),
+    channel_buffer_start: c_int = std.mem.zeroes(c_int),
+    channel_buffer_end: c_int = std.mem.zeroes(c_int),
 };
 pub const stb_vorbis = struct_stb_vorbis;
 pub const stb_vorbis_info = extern struct {
-    sample_rate: c_uint = @import("std").mem.zeroes(c_uint),
-    channels: c_int = @import("std").mem.zeroes(c_int),
-    setup_memory_required: c_uint = @import("std").mem.zeroes(c_uint),
-    setup_temp_memory_required: c_uint = @import("std").mem.zeroes(c_uint),
-    temp_memory_required: c_uint = @import("std").mem.zeroes(c_uint),
-    max_frame_size: c_int = @import("std").mem.zeroes(c_int),
+    sample_rate: c_uint = std.mem.zeroes(c_uint),
+    channels: c_int = std.mem.zeroes(c_int),
+    setup_memory_required: c_uint = std.mem.zeroes(c_uint),
+    setup_temp_memory_required: c_uint = std.mem.zeroes(c_uint),
+    temp_memory_required: c_uint = std.mem.zeroes(c_uint),
+    max_frame_size: c_int = std.mem.zeroes(c_int),
 };
 pub const stb_vorbis_comment = extern struct {
-    vendor: [*c]u8 = @import("std").mem.zeroes([*c]u8),
-    comment_list_length: c_int = @import("std").mem.zeroes(c_int),
-    comment_list: [*c][*c]u8 = @import("std").mem.zeroes([*c][*c]u8),
+    vendor: [*c]u8 = std.mem.zeroes([*c]u8),
+    comment_list_length: c_int = std.mem.zeroes(c_int),
+    comment_list: [*c][*c]u8 = std.mem.zeroes([*c][*c]u8),
 };
 pub export fn stb_vorbis_get_info(arg_f: [*c]stb_vorbis) stb_vorbis_info {
     var f = arg_f;
@@ -207,10 +170,9 @@ pub export fn stb_vorbis_get_file_offset(arg_f: [*c]stb_vorbis) c_uint {
     var f = arg_f;
     _ = &f;
     if (f.*.push_mode != 0) return 0;
-    if (f.*.stream != null) return @as(c_uint, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(f.*.stream) -% @intFromPtr(f.*.stream_start))), @sizeOf(uint8))))));
-    return @as(c_uint, @bitCast(@as(c_int, @truncate(ftell(f.*.f) - @as(c_long, @bitCast(@as(c_ulong, f.*.f_start)))))));
+    return @as(c_uint, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(f.*.stream) -% @intFromPtr(f.*.stream_start))), @sizeOf(uint8))))));
 }
-pub export fn stb_vorbis_open_pushdata(arg_data: [*c]const u8, arg_data_len: c_int, arg_data_used: [*c]c_int, arg_error_1: [*c]c_int, arg_alloc: [*c]const stb_vorbis_alloc) [*c]stb_vorbis {
+pub fn stb_vorbis_open_pushdata(arg_data: [*c]const u8, arg_data_len: c_int, arg_data_used: [*c]c_int, arg_error_1: [*c]c_int, arg_alloc: [*c]const stb_vorbis_alloc) ![*c]stb_vorbis {
     var data = arg_data;
     _ = &data;
     var data_len = arg_data_len;
@@ -229,7 +191,7 @@ pub export fn stb_vorbis_open_pushdata(arg_data: [*c]const u8, arg_data_len: c_i
     p.stream = @as([*c]uint8, @ptrCast(@constCast(@volatileCast(data))));
     p.stream_end = @as([*c]uint8, @ptrCast(@constCast(@volatileCast(data)))) + @as(usize, @bitCast(@as(isize, @intCast(data_len))));
     p.push_mode = 1;
-    if (!(start_decoder(&p) != 0)) {
+    if (!(try start_decoder(&p) != 0)) {
         if (p.eof != 0) {
             error_1.* = VORBIS_need_more_data;
         } else {
@@ -331,70 +293,7 @@ pub export fn stb_vorbis_flush_pushdata(arg_f: [*c]stb_vorbis) void {
     f.*.channel_buffer_start = 0;
     f.*.channel_buffer_end = 0;
 }
-pub export fn stb_vorbis_decode_filename(arg_filename: [*c]const u8, arg_channels: [*c]c_int, arg_sample_rate: [*c]c_int, arg_output: [*c][*c]c_short) c_int {
-    var filename = arg_filename;
-    _ = &filename;
-    var channels = arg_channels;
-    _ = &channels;
-    var sample_rate = arg_sample_rate;
-    _ = &sample_rate;
-    var output = arg_output;
-    _ = &output;
-    var data_len: c_int = undefined;
-    _ = &data_len;
-    var offset: c_int = undefined;
-    _ = &offset;
-    var total: c_int = undefined;
-    _ = &total;
-    var limit: c_int = undefined;
-    _ = &limit;
-    var error_1: c_int = undefined;
-    _ = &error_1;
-    var data: [*c]c_short = undefined;
-    _ = &data;
-    var v: [*c]stb_vorbis = stb_vorbis_open_filename(filename, &error_1, null);
-    _ = &v;
-    if (v == @as([*c]stb_vorbis, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) return -@as(c_int, 1);
-    limit = v.*.channels * @as(c_int, 4096);
-    channels.* = v.*.channels;
-    if (sample_rate != null) {
-        sample_rate.* = @as(c_int, @bitCast(v.*.sample_rate));
-    }
-    offset = blk: {
-        const tmp = @as(c_int, 0);
-        data_len = tmp;
-        break :blk tmp;
-    };
-    total = limit;
-    data = @as([*c]c_short, @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(@as(c_long, total))) *% @sizeOf(c_short)))));
-    if (data == @as([*c]c_short, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) {
-        stb_vorbis_close(v);
-        return -@as(c_int, 2);
-    }
-    while (true) {
-        var n: c_int = stb_vorbis_get_frame_short_interleaved(v, v.*.channels, data + @as(usize, @bitCast(@as(isize, @intCast(offset)))), total - offset);
-        _ = &n;
-        if (n == @as(c_int, 0)) break;
-        data_len += n;
-        offset += n * v.*.channels;
-        if ((offset + limit) > total) {
-            var data2: [*c]c_short = undefined;
-            _ = &data2;
-            total *= @as(c_int, 2);
-            data2 = @as([*c]c_short, @ptrCast(@alignCast(realloc(@as(?*anyopaque, @ptrCast(data)), @as(c_ulong, @bitCast(@as(c_long, total))) *% @sizeOf(c_short)))));
-            if (data2 == @as([*c]c_short, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) {
-                free(@as(?*anyopaque, @ptrCast(data)));
-                stb_vorbis_close(v);
-                return -@as(c_int, 2);
-            }
-            data = data2;
-        }
-    }
-    output.* = data;
-    stb_vorbis_close(v);
-    return data_len;
-}
-pub export fn stb_vorbis_decode_memory(arg_mem: [*c]const u8, arg_len: c_int, arg_channels: [*c]c_int, arg_sample_rate: [*c]c_int, arg_output: [*c][*c]c_short) c_int {
+pub fn stb_vorbis_decode_memory(arg_mem: [*c]const u8, arg_len: c_int, arg_channels: [*c]c_int, arg_sample_rate: [*c]c_int, arg_output: [*c][*c]c_short) !c_int {
     var mem = arg_mem;
     _ = &mem;
     var len = arg_len;
@@ -417,7 +316,7 @@ pub export fn stb_vorbis_decode_memory(arg_mem: [*c]const u8, arg_len: c_int, ar
     _ = &error_1;
     var data: [*c]c_short = undefined;
     _ = &data;
-    var v: [*c]stb_vorbis = stb_vorbis_open_memory(mem, len, &error_1, null);
+    var v: [*c]stb_vorbis = try stb_vorbis_open_memory(mem, len, &error_1, null);
     _ = &v;
     if (v == @as([*c]stb_vorbis, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) return -@as(c_int, 1);
     limit = v.*.channels * @as(c_int, 4096);
@@ -459,7 +358,7 @@ pub export fn stb_vorbis_decode_memory(arg_mem: [*c]const u8, arg_len: c_int, ar
     stb_vorbis_close(v);
     return data_len;
 }
-pub export fn stb_vorbis_open_memory(arg_data: [*c]const u8, arg_len: c_int, arg_error_1: [*c]c_int, arg_alloc: [*c]const stb_vorbis_alloc) [*c]stb_vorbis {
+pub fn stb_vorbis_open_memory(arg_data: [*c]const u8, arg_len: c_int, arg_error_1: [*c]c_int, arg_alloc: [*c]const stb_vorbis_alloc) ![*c]stb_vorbis {
     var data = arg_data;
     _ = &data;
     var len = arg_len;
@@ -485,7 +384,7 @@ pub export fn stb_vorbis_open_memory(arg_data: [*c]const u8, arg_len: c_int, arg
     p.stream_start = p.stream;
     p.stream_len = @as(uint32, @bitCast(len));
     p.push_mode = 0;
-    if (start_decoder(&p) != 0) {
+    if (try start_decoder(&p) != 0) {
         f = vorbis_alloc(&p);
         if (f != null) {
             f.* = p;
@@ -501,146 +400,6 @@ pub export fn stb_vorbis_open_memory(arg_data: [*c]const u8, arg_len: c_int, arg
     }
     vorbis_deinit(&p);
     return null;
-}
-pub export fn stb_vorbis_open_filename(arg_filename: [*c]const u8, arg_error_1: [*c]c_int, arg_alloc: [*c]const stb_vorbis_alloc) [*c]stb_vorbis {
-    var filename = arg_filename;
-    _ = &filename;
-    var error_1 = arg_error_1;
-    _ = &error_1;
-    var alloc = arg_alloc;
-    _ = &alloc;
-    var f: [*c]FILE = undefined;
-    _ = &f;
-    f = fopen(filename, "rb");
-    if (f != null) return stb_vorbis_open_file(f, @as(c_int, 1), error_1, alloc);
-    if (error_1 != null) {
-        error_1.* = VORBIS_file_open_failure;
-    }
-    return null;
-}
-pub export fn stb_vorbis_open_file(arg_file: [*c]FILE, arg_close_on_free: c_int, arg_error_1: [*c]c_int, arg_alloc: [*c]const stb_vorbis_alloc) [*c]stb_vorbis {
-    var file = arg_file;
-    _ = &file;
-    var close_on_free = arg_close_on_free;
-    _ = &close_on_free;
-    var error_1 = arg_error_1;
-    _ = &error_1;
-    var alloc = arg_alloc;
-    _ = &alloc;
-    var len: c_uint = undefined;
-    _ = &len;
-    var start: c_uint = undefined;
-    _ = &start;
-    start = @as(c_uint, @bitCast(@as(c_int, @truncate(ftell(file)))));
-    _ = fseek(file, @as(c_long, @bitCast(@as(c_long, @as(c_int, 0)))), @as(c_int, 2));
-    len = @as(c_uint, @bitCast(@as(c_int, @truncate(ftell(file) - @as(c_long, @bitCast(@as(c_ulong, start)))))));
-    _ = fseek(file, @as(c_long, @bitCast(@as(c_ulong, start))), @as(c_int, 0));
-    return stb_vorbis_open_file_section(file, close_on_free, error_1, alloc, len);
-}
-pub export fn stb_vorbis_open_file_section(arg_file: [*c]FILE, arg_close_on_free: c_int, arg_error_1: [*c]c_int, arg_alloc: [*c]const stb_vorbis_alloc, arg_length: c_uint) [*c]stb_vorbis {
-    var file = arg_file;
-    _ = &file;
-    var close_on_free = arg_close_on_free;
-    _ = &close_on_free;
-    var error_1 = arg_error_1;
-    _ = &error_1;
-    var alloc = arg_alloc;
-    _ = &alloc;
-    var length = arg_length;
-    _ = &length;
-    var f: [*c]stb_vorbis = undefined;
-    _ = &f;
-    var p: stb_vorbis = undefined;
-    _ = &p;
-    vorbis_init(&p, alloc);
-    p.f = file;
-    p.f_start = @as(uint32, @bitCast(@as(c_int, @truncate(ftell(file)))));
-    p.stream_len = length;
-    p.close_on_free = close_on_free;
-    if (start_decoder(&p) != 0) {
-        f = vorbis_alloc(&p);
-        if (f != null) {
-            f.* = p;
-            _ = vorbis_pump_first_frame(f);
-            return f;
-        }
-    }
-    if (error_1 != null) {
-        error_1.* = @as(c_int, @bitCast(p.@"error"));
-    }
-    vorbis_deinit(&p);
-    return null;
-}
-pub export fn stb_vorbis_seek_frame(arg_f: [*c]stb_vorbis, arg_sample_number: c_uint) c_int {
-    var f = arg_f;
-    _ = &f;
-    var sample_number = arg_sample_number;
-    _ = &sample_number;
-    var max_frame_samples: uint32 = undefined;
-    _ = &max_frame_samples;
-    if (f.*.push_mode != 0) return @"error"(f, @as(c_uint, @bitCast(VORBIS_invalid_api_mixing)));
-    if (!(seek_to_sample_coarse(f, sample_number) != 0)) return 0;
-    _ = if (__builtin_expect(@as(c_long, @intFromBool(!(f.*.current_loc_valid != 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) __assert_rtn("stb_vorbis_seek_frame", "vorgbis.h", @as(c_int, 4890), "f->current_loc_valid") else @as(c_int, 0);
-    _ = if (__builtin_expect(@as(c_long, @intFromBool(!(f.*.current_loc <= sample_number))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) __assert_rtn("stb_vorbis_seek_frame", "vorgbis.h", @as(c_int, 4891), "f->current_loc <= sample_number") else @as(c_int, 0);
-    max_frame_samples = @as(uint32, @bitCast(((f.*.blocksize_1 * @as(c_int, 3)) - f.*.blocksize_0) >> @intCast(2)));
-    while (f.*.current_loc < sample_number) {
-        var left_start: c_int = undefined;
-        _ = &left_start;
-        var left_end: c_int = undefined;
-        _ = &left_end;
-        var right_start: c_int = undefined;
-        _ = &right_start;
-        var right_end: c_int = undefined;
-        _ = &right_end;
-        var mode: c_int = undefined;
-        _ = &mode;
-        var frame_samples: c_int = undefined;
-        _ = &frame_samples;
-        if (!(peek_decode_initial(f, &left_start, &left_end, &right_start, &right_end, &mode) != 0)) return @"error"(f, @as(c_uint, @bitCast(VORBIS_seek_failed)));
-        frame_samples = right_start - left_start;
-        if ((f.*.current_loc +% @as(uint32, @bitCast(frame_samples))) > sample_number) {
-            return 1;
-        } else if (((f.*.current_loc +% @as(uint32, @bitCast(frame_samples))) +% max_frame_samples) > sample_number) {
-            _ = vorbis_pump_first_frame(f);
-        } else {
-            f.*.current_loc +%= @as(uint32, @bitCast(frame_samples));
-            f.*.previous_length = 0;
-            _ = maybe_start_packet(f);
-            flush_packet(f);
-        }
-    }
-    if (f.*.current_loc != sample_number) return @"error"(f, @as(c_uint, @bitCast(VORBIS_seek_failed)));
-    return 1;
-}
-pub export fn stb_vorbis_seek(arg_f: [*c]stb_vorbis, arg_sample_number: c_uint) c_int {
-    var f = arg_f;
-    _ = &f;
-    var sample_number = arg_sample_number;
-    _ = &sample_number;
-    if (!(stb_vorbis_seek_frame(f, sample_number) != 0)) return 0;
-    if (sample_number != f.*.current_loc) {
-        var n: c_int = undefined;
-        _ = &n;
-        var frame_start: uint32 = f.*.current_loc;
-        _ = &frame_start;
-        _ = stb_vorbis_get_frame_float(f, &n, null);
-        _ = if (__builtin_expect(@as(c_long, @intFromBool(!(sample_number > frame_start))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) __assert_rtn("stb_vorbis_seek", "vorgbis.h", @as(c_int, 4928), "sample_number > frame_start") else @as(c_int, 0);
-        _ = if (__builtin_expect(@as(c_long, @intFromBool(!((f.*.channel_buffer_start + @as(c_int, @bitCast(sample_number -% frame_start))) <= f.*.channel_buffer_end))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) __assert_rtn("stb_vorbis_seek", "vorgbis.h", @as(c_int, 4929), "f->channel_buffer_start + (int) (sample_number-frame_start) <= f->channel_buffer_end") else @as(c_int, 0);
-        f.*.channel_buffer_start += @as(c_int, @bitCast(sample_number -% frame_start));
-    }
-    return 1;
-}
-pub export fn stb_vorbis_seek_start(arg_f: [*c]stb_vorbis) c_int {
-    var f = arg_f;
-    _ = &f;
-    if (f.*.push_mode != 0) {
-        return @"error"(f, @as(c_uint, @bitCast(VORBIS_invalid_api_mixing)));
-    }
-    _ = set_file_offset(f, f.*.first_audio_page_offset);
-    f.*.previous_length = 0;
-    f.*.first_decode = 1;
-    f.*.next_seg = -@as(c_int, 1);
-    return vorbis_pump_first_frame(f);
 }
 pub export fn stb_vorbis_stream_length_in_samples(arg_f: [*c]stb_vorbis) c_uint {
     var f = arg_f;
@@ -697,11 +456,6 @@ pub export fn stb_vorbis_stream_length_in_samples(arg_f: [*c]stb_vorbis) c_uint 
     }
     if (f.*.total_samples == sample_unknown) return 0;
     return f.*.total_samples;
-}
-pub export fn stb_vorbis_stream_length_in_seconds(arg_f: [*c]stb_vorbis) f32 {
-    var f = arg_f;
-    _ = &f;
-    return @as(f32, @floatFromInt(stb_vorbis_stream_length_in_samples(f))) / @as(f32, @floatFromInt(f.*.sample_rate));
 }
 pub export fn stb_vorbis_get_frame_float(arg_f: [*c]stb_vorbis, arg_channels: [*c]c_int, arg_output: [*c][*c][*c]f32) c_int {
     var f = arg_f;
@@ -852,57 +606,39 @@ pub export fn stb_vorbis_get_samples_float_interleaved(arg_f: [*c]stb_vorbis, ar
     }
     return n;
 }
-pub export fn stb_vorbis_get_samples_float(arg_f: [*c]stb_vorbis, arg_channels: c_int, arg_buffer: [*c][*c]f32, arg_num_samples: c_int) c_int {
-    var f = arg_f;
-    _ = &f;
-    var channels = arg_channels;
-    _ = &channels;
-    var buffer = arg_buffer;
-    _ = &buffer;
-    var num_samples = arg_num_samples;
-    _ = &num_samples;
+pub export fn stb_vorbis_get_samples_float(f: [*c]stb_vorbis, channels: usize, buffer: [*c][*c]f32, num_samples: usize) usize {
     var outputs: [*c][*c]f32 = undefined;
-    _ = &outputs;
-    var n: c_int = 0;
-    _ = &n;
-    var z: c_int = f.*.channels;
-    _ = &z;
+    var n: usize = 0;
+    var z: usize = @intCast(f.*.channels);
     if (z > channels) {
         z = channels;
     }
     while (n < num_samples) {
-        var i: c_int = undefined;
-        _ = &i;
-        var k: c_int = f.*.channel_buffer_end - f.*.channel_buffer_start;
-        _ = &k;
-        if ((n + k) >= num_samples) {
+        var k: usize = @intCast(f.*.channel_buffer_end - f.*.channel_buffer_start);
+        if (n + k >= num_samples) {
             k = num_samples - n;
         }
         if (k != 0) {
-            {
-                i = 0;
-                while (i < z) : (i += 1) {
-                    _ = __builtin___memcpy_chk(@as(?*anyopaque, @ptrCast((blk: {
-                        const tmp = i;
-                        if (tmp >= 0) break :blk buffer + @as(usize, @intCast(tmp)) else break :blk buffer - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                    }).* + @as(usize, @bitCast(@as(isize, @intCast(n)))))), @as(?*const anyopaque, @ptrCast(f.*.channel_buffers[@as(c_uint, @intCast(i))] + @as(usize, @bitCast(@as(isize, @intCast(f.*.channel_buffer_start)))))), @sizeOf(f32) *% @as(c_ulong, @bitCast(@as(c_long, k))), __builtin_object_size(@as(?*const anyopaque, @ptrCast((blk: {
-                        const tmp = i;
-                        if (tmp >= 0) break :blk buffer + @as(usize, @intCast(tmp)) else break :blk buffer - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                    }).* + @as(usize, @bitCast(@as(isize, @intCast(n)))))), @as(c_int, 0)));
-                }
+            var i: usize = 0;
+            while (i < z) : (i += 1) {
+                _ = __builtin___memcpy_chk(@as(?*anyopaque, @ptrCast((blk: {
+                    if (i >= 0) break :blk buffer + i else break :blk buffer - ~(i - 1);
+                }).* + n)), @as(?*const anyopaque, @ptrCast(f.*.channel_buffers[@as(c_uint, @intCast(i))] + @as(usize, @bitCast(@as(isize, @intCast(f.*.channel_buffer_start)))))), @sizeOf(f32) *% @as(c_ulong, @bitCast(k)), __builtin_object_size(@as(?*const anyopaque, @ptrCast((blk: {
+                    if (i >= 0) break :blk buffer + @as(usize, @intCast(i)) else break :blk buffer - ~@as(usize, @bitCast(@as(isize, @intCast(i)) +% -1));
+                }).* + @as(usize, @bitCast(@as(isize, @intCast(n)))))), 0));
             }
             while (i < channels) : (i += 1) {
                 _ = __builtin___memset_chk(@as(?*anyopaque, @ptrCast((blk: {
                     const tmp = i;
                     if (tmp >= 0) break :blk buffer + @as(usize, @intCast(tmp)) else break :blk buffer - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                }).* + @as(usize, @bitCast(@as(isize, @intCast(n)))))), @as(c_int, 0), @sizeOf(f32) *% @as(c_ulong, @bitCast(@as(c_long, k))), __builtin_object_size(@as(?*const anyopaque, @ptrCast((blk: {
+                }).* + @as(usize, @bitCast(@as(isize, @intCast(n)))))), @as(c_int, 0), @sizeOf(f32) *% @as(c_ulong, @bitCast(k)), __builtin_object_size(@as(?*const anyopaque, @ptrCast((blk: {
                     const tmp = i;
                     if (tmp >= 0) break :blk buffer + @as(usize, @intCast(tmp)) else break :blk buffer - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).* + @as(usize, @bitCast(@as(isize, @intCast(n)))))), @as(c_int, 0)));
             }
         }
         n += k;
-        f.*.channel_buffer_start += k;
+        f.*.channel_buffer_start += @intCast(k);
         if (n == num_samples) break;
         if (!(stb_vorbis_get_frame_float(f, null, &outputs) != 0)) break;
     }
@@ -980,106 +716,99 @@ pub extern fn memcmp(__s1: ?*const anyopaque, __s2: ?*const anyopaque, __n: c_ul
 pub extern fn memcpy(__dst: ?*anyopaque, __src: ?*const anyopaque, __n: c_ulong) ?*anyopaque;
 pub extern fn memset(__b: ?*anyopaque, __c: c_int, __len: c_ulong) ?*anyopaque;
 pub extern fn __assert_rtn([*c]const u8, [*c]const u8, c_int, [*c]const u8) noreturn;
-pub extern fn cos(f64) f64;
-pub extern fn sin(f64) f64;
-pub extern fn exp(f64) f64;
-pub extern fn log(f64) f64;
-pub extern fn ldexp(f64, c_int) f64;
-pub extern fn pow(f64, f64) f64;
-pub extern fn floor(f64) f64;
 pub const struct_exception = extern struct {
-    type: c_int = @import("std").mem.zeroes(c_int),
-    name: [*c]u8 = @import("std").mem.zeroes([*c]u8),
-    arg1: f64 = @import("std").mem.zeroes(f64),
-    arg2: f64 = @import("std").mem.zeroes(f64),
-    retval: f64 = @import("std").mem.zeroes(f64),
+    type: c_int = std.mem.zeroes(c_int),
+    name: [*c]u8 = std.mem.zeroes([*c]u8),
+    arg1: f64 = std.mem.zeroes(f64),
+    arg2: f64 = std.mem.zeroes(f64),
+    retval: f64 = std.mem.zeroes(f64),
 };
 pub const int8 = i8;
 pub const int32 = c_int;
 pub const codetype = f32;
 pub const Codebook = extern struct {
-    dimensions: c_int = @import("std").mem.zeroes(c_int),
-    entries: c_int = @import("std").mem.zeroes(c_int),
-    codeword_lengths: [*c]uint8 = @import("std").mem.zeroes([*c]uint8),
-    minimum_value: f32 = @import("std").mem.zeroes(f32),
-    delta_value: f32 = @import("std").mem.zeroes(f32),
-    value_bits: uint8 = @import("std").mem.zeroes(uint8),
-    lookup_type: uint8 = @import("std").mem.zeroes(uint8),
-    sequence_p: uint8 = @import("std").mem.zeroes(uint8),
-    sparse: uint8 = @import("std").mem.zeroes(uint8),
-    lookup_values: uint32 = @import("std").mem.zeroes(uint32),
-    multiplicands: [*c]codetype = @import("std").mem.zeroes([*c]codetype),
-    codewords: [*c]uint32 = @import("std").mem.zeroes([*c]uint32),
-    fast_huffman: [1024]int16 = @import("std").mem.zeroes([1024]int16),
-    sorted_codewords: [*c]uint32 = @import("std").mem.zeroes([*c]uint32),
-    sorted_values: [*c]c_int = @import("std").mem.zeroes([*c]c_int),
-    sorted_entries: c_int = @import("std").mem.zeroes(c_int),
+    dimensions: c_int = std.mem.zeroes(c_int),
+    entries: c_int = std.mem.zeroes(c_int),
+    codeword_lengths: [*c]uint8 = std.mem.zeroes([*c]uint8),
+    minimum_value: f32 = std.mem.zeroes(f32),
+    delta_value: f32 = std.mem.zeroes(f32),
+    value_bits: uint8 = std.mem.zeroes(uint8),
+    lookup_type: uint8 = std.mem.zeroes(uint8),
+    sequence_p: uint8 = std.mem.zeroes(uint8),
+    sparse: uint8 = std.mem.zeroes(uint8),
+    lookup_values: uint32 = std.mem.zeroes(uint32),
+    multiplicands: [*c]codetype = std.mem.zeroes([*c]codetype),
+    codewords: [*c]uint32 = std.mem.zeroes([*c]uint32),
+    fast_huffman: [1024]int16 = std.mem.zeroes([1024]int16),
+    sorted_codewords: [*c]uint32 = std.mem.zeroes([*c]uint32),
+    sorted_values: [*c]c_int = std.mem.zeroes([*c]c_int),
+    sorted_entries: c_int = std.mem.zeroes(c_int),
 };
 pub const Floor0 = extern struct {
-    order: uint8 = @import("std").mem.zeroes(uint8),
-    rate: uint16 = @import("std").mem.zeroes(uint16),
-    bark_map_size: uint16 = @import("std").mem.zeroes(uint16),
-    amplitude_bits: uint8 = @import("std").mem.zeroes(uint8),
-    amplitude_offset: uint8 = @import("std").mem.zeroes(uint8),
-    number_of_books: uint8 = @import("std").mem.zeroes(uint8),
-    book_list: [16]uint8 = @import("std").mem.zeroes([16]uint8),
+    order: uint8 = std.mem.zeroes(uint8),
+    rate: uint16 = std.mem.zeroes(uint16),
+    bark_map_size: uint16 = std.mem.zeroes(uint16),
+    amplitude_bits: uint8 = std.mem.zeroes(uint8),
+    amplitude_offset: uint8 = std.mem.zeroes(uint8),
+    number_of_books: uint8 = std.mem.zeroes(uint8),
+    book_list: [16]uint8 = std.mem.zeroes([16]uint8),
 };
 pub const Floor1 = extern struct {
-    partitions: uint8 = @import("std").mem.zeroes(uint8),
-    partition_class_list: [32]uint8 = @import("std").mem.zeroes([32]uint8),
-    class_dimensions: [16]uint8 = @import("std").mem.zeroes([16]uint8),
-    class_subclasses: [16]uint8 = @import("std").mem.zeroes([16]uint8),
-    class_masterbooks: [16]uint8 = @import("std").mem.zeroes([16]uint8),
-    subclass_books: [16][8]int16 = @import("std").mem.zeroes([16][8]int16),
-    Xlist: [250]uint16 = @import("std").mem.zeroes([250]uint16),
-    sorted_order: [250]uint8 = @import("std").mem.zeroes([250]uint8),
-    neighbors: [250][2]uint8 = @import("std").mem.zeroes([250][2]uint8),
-    floor1_multiplier: uint8 = @import("std").mem.zeroes(uint8),
-    rangebits: uint8 = @import("std").mem.zeroes(uint8),
-    values: c_int = @import("std").mem.zeroes(c_int),
+    partitions: uint8 = std.mem.zeroes(uint8),
+    partition_class_list: [32]uint8 = std.mem.zeroes([32]uint8),
+    class_dimensions: [16]uint8 = std.mem.zeroes([16]uint8),
+    class_subclasses: [16]uint8 = std.mem.zeroes([16]uint8),
+    class_masterbooks: [16]uint8 = std.mem.zeroes([16]uint8),
+    subclass_books: [16][8]int16 = std.mem.zeroes([16][8]int16),
+    Xlist: [250]uint16 = std.mem.zeroes([250]uint16),
+    sorted_order: [250]uint8 = std.mem.zeroes([250]uint8),
+    neighbors: [250][2]uint8 = std.mem.zeroes([250][2]uint8),
+    floor1_multiplier: uint8 = std.mem.zeroes(uint8),
+    rangebits: uint8 = std.mem.zeroes(uint8),
+    values: c_int = std.mem.zeroes(c_int),
 };
 pub const Floor = extern union {
     floor0: Floor0,
     floor1: Floor1,
 };
 pub const Residue = extern struct {
-    begin: uint32 = @import("std").mem.zeroes(uint32),
-    end: uint32 = @import("std").mem.zeroes(uint32),
-    part_size: uint32 = @import("std").mem.zeroes(uint32),
-    classifications: uint8 = @import("std").mem.zeroes(uint8),
-    classbook: uint8 = @import("std").mem.zeroes(uint8),
-    classdata: [*c][*c]uint8 = @import("std").mem.zeroes([*c][*c]uint8),
-    residue_books: [*c][8]int16 = @import("std").mem.zeroes([*c][8]int16),
+    begin: uint32 = std.mem.zeroes(uint32),
+    end: uint32 = std.mem.zeroes(uint32),
+    part_size: uint32 = std.mem.zeroes(uint32),
+    classifications: uint8 = std.mem.zeroes(uint8),
+    classbook: uint8 = std.mem.zeroes(uint8),
+    classdata: [*c][*c]uint8 = std.mem.zeroes([*c][*c]uint8),
+    residue_books: [*c][8]int16 = std.mem.zeroes([*c][8]int16),
 };
 pub const MappingChannel = extern struct {
-    magnitude: uint8 = @import("std").mem.zeroes(uint8),
-    angle: uint8 = @import("std").mem.zeroes(uint8),
-    mux: uint8 = @import("std").mem.zeroes(uint8),
+    magnitude: uint8 = std.mem.zeroes(uint8),
+    angle: uint8 = std.mem.zeroes(uint8),
+    mux: uint8 = std.mem.zeroes(uint8),
 };
 pub const Mapping = extern struct {
-    coupling_steps: uint16 = @import("std").mem.zeroes(uint16),
-    chan: [*c]MappingChannel = @import("std").mem.zeroes([*c]MappingChannel),
-    submaps: uint8 = @import("std").mem.zeroes(uint8),
-    submap_floor: [15]uint8 = @import("std").mem.zeroes([15]uint8),
-    submap_residue: [15]uint8 = @import("std").mem.zeroes([15]uint8),
+    coupling_steps: uint16 = std.mem.zeroes(uint16),
+    chan: [*c]MappingChannel = std.mem.zeroes([*c]MappingChannel),
+    submaps: uint8 = std.mem.zeroes(uint8),
+    submap_floor: [15]uint8 = std.mem.zeroes([15]uint8),
+    submap_residue: [15]uint8 = std.mem.zeroes([15]uint8),
 };
 pub const Mode = extern struct {
-    blockflag: uint8 = @import("std").mem.zeroes(uint8),
-    mapping: uint8 = @import("std").mem.zeroes(uint8),
-    windowtype: uint16 = @import("std").mem.zeroes(uint16),
-    transformtype: uint16 = @import("std").mem.zeroes(uint16),
+    blockflag: uint8 = std.mem.zeroes(uint8),
+    mapping: uint8 = std.mem.zeroes(uint8),
+    windowtype: uint16 = std.mem.zeroes(uint16),
+    transformtype: uint16 = std.mem.zeroes(uint16),
 };
 pub const CRCscan = extern struct {
-    goal_crc: uint32 = @import("std").mem.zeroes(uint32),
-    bytes_left: c_int = @import("std").mem.zeroes(c_int),
-    crc_so_far: uint32 = @import("std").mem.zeroes(uint32),
-    bytes_done: c_int = @import("std").mem.zeroes(c_int),
-    sample_loc: uint32 = @import("std").mem.zeroes(uint32),
+    goal_crc: uint32 = std.mem.zeroes(uint32),
+    bytes_left: c_int = std.mem.zeroes(c_int),
+    crc_so_far: uint32 = std.mem.zeroes(uint32),
+    bytes_done: c_int = std.mem.zeroes(c_int),
+    sample_loc: uint32 = std.mem.zeroes(uint32),
 };
 pub const ProbedPage = extern struct {
-    page_start: uint32 = @import("std").mem.zeroes(uint32),
-    page_end: uint32 = @import("std").mem.zeroes(uint32),
-    last_decoded_sample: uint32 = @import("std").mem.zeroes(uint32),
+    page_start: uint32 = std.mem.zeroes(uint32),
+    page_end: uint32 = std.mem.zeroes(uint32),
+    last_decoded_sample: uint32 = std.mem.zeroes(uint32),
 };
 pub const vorb = struct_stb_vorbis;
 pub fn @"error"(arg_f: [*c]vorb, arg_e: enum_STBVorbisError) callconv(.c) c_int {
@@ -1172,8 +901,8 @@ pub fn setup_temp_free(arg_f: [*c]vorb, arg_p: ?*anyopaque, arg_sz: c_int) callc
     // No buffer - use free
     free(p);
 }
-pub var crc_table: [256]uint32 = @import("std").mem.zeroes([256]uint32);
-pub var integer_divide_table: [DIVTAB_NUMER][DIVTAB_DENOM]i8 = @import("std").mem.zeroes([DIVTAB_NUMER][DIVTAB_DENOM]i8);
+pub var crc_table: [256]uint32 = std.mem.zeroes([256]uint32);
+pub var integer_divide_table: [DIVTAB_NUMER][DIVTAB_DENOM]i8 = std.mem.zeroes([DIVTAB_NUMER][DIVTAB_DENOM]i8);
 pub fn crc32_init() callconv(.c) void {
     var i: c_int = undefined;
     _ = &i;
@@ -1261,7 +990,7 @@ pub fn float32_unpack(arg_x: uint32) callconv(.c) f32 {
     _ = &exp_1;
     var res: f64 = if (sign != 0) -@as(f64, @floatFromInt(mantissa)) else @as(f64, @floatFromInt(mantissa));
     _ = &res;
-    return @as(f32, @floatCast(ldexp(@as(f64, @floatCast(@as(f32, @floatCast(res)))), @as(c_int, @bitCast(exp_1)) - @as(c_int, 788))));
+    return @as(f32, @floatCast(std.math.ldexp(@as(f64, @floatCast(@as(f32, @floatCast(res)))), @as(c_int, @bitCast(exp_1)) - @as(c_int, 788))));
 }
 pub fn add_entry(arg_c: [*c]Codebook, arg_huff_code: uint32, arg_symbol: c_int, arg_count: c_int, arg_len: c_int, arg_values: [*c]uint32) callconv(.c) void {
     var c = arg_c;
@@ -1597,19 +1326,17 @@ pub fn vorbis_validate(arg_data: [*c]uint8) callconv(.c) c_int {
     _ = &vorbis;
     return @intFromBool(memcmp(@as(?*const anyopaque, @ptrCast(data)), @as(?*const anyopaque, @ptrCast(@as([*c]uint8, @ptrCast(@alignCast(&vorbis.static[@as(usize, @intCast(0))]))))), @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 6))))) == @as(c_int, 0));
 }
-pub fn lookup1_values(arg_entries: c_int, arg_dim: c_int) callconv(.c) c_int {
-    var entries = arg_entries;
-    _ = &entries;
-    var dim = arg_dim;
-    _ = &dim;
-    var r: c_int = @as(c_int, @intFromFloat(floor(exp(@as(f64, @floatCast(@as(f32, @floatCast(log(@as(f64, @floatCast(@as(f32, @floatFromInt(entries))))))) / @as(f32, @floatFromInt(dim))))))));
-    _ = &r;
-    if (@as(c_int, @intFromFloat(floor(pow(@as(f64, @floatCast(@as(f32, @floatFromInt(r)) + @as(f32, @floatFromInt(@as(c_int, 1))))), @as(f64, @floatFromInt(dim)))))) <= entries) {
+pub fn lookup1_values(entries: i32, dim: i32) !u32 {
+    const dim_f: f64 = @floatFromInt(dim);
+    const entries_f: f64 = @floatFromInt(entries);
+    var r: i32 = @intFromFloat(std.math.floor(@exp(@as(f32, @floatCast(@log(entries_f))) / dim_f)));
+    if (@as(i32, @intFromFloat(std.math.floor(std.math.pow(f64, @as(f64, @floatFromInt(r)) + 1, dim_f)))) <= entries) {
         r += 1;
     }
-    if (pow(@as(f64, @floatCast(@as(f32, @floatFromInt(r)) + @as(f32, @floatFromInt(@as(c_int, 1))))), @as(f64, @floatFromInt(dim))) <= @as(f64, @floatFromInt(entries))) return -@as(c_int, 1);
-    if (@as(c_int, @intFromFloat(floor(pow(@as(f64, @floatCast(@as(f32, @floatFromInt(r)))), @as(f64, @floatFromInt(dim)))))) > entries) return -@as(c_int, 1);
-    return r;
+    if (std.math.pow(f64, @as(f64, @floatCast(@as(f32, @floatFromInt(r)) + 1)), dim_f) <= entries_f) return error.InvalidSetup;
+    if (@as(i32, @intFromFloat(std.math.floor(std.math.pow(f64, @as(f64, @floatFromInt(r)), dim_f)))) > entries) return error.InvalidSetup;
+
+    return @intCast(r);
 }
 pub fn compute_twiddle_factors(arg_n: c_int, arg_A: [*c]f32, arg_B: [*c]f32, arg_C_1: [*c]f32) callconv(.c) void {
     var n = arg_n;
@@ -1645,19 +1372,19 @@ pub fn compute_twiddle_factors(arg_n: c_int, arg_A: [*c]f32, arg_B: [*c]f32, arg
             (blk: {
                 const tmp = k2;
                 if (tmp >= 0) break :blk A + @as(usize, @intCast(tmp)) else break :blk A - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-            }).* = @as(f32, @floatCast(cos((@as(f64, @floatFromInt(@as(c_int, 4) * k)) * 3.141592653589793) / @as(f64, @floatFromInt(n)))));
+            }).* = @as(f32, @floatCast(@cos((@as(f64, @floatFromInt(@as(c_int, 4) * k)) * 3.141592653589793) / @as(f64, @floatFromInt(n)))));
             (blk: {
                 const tmp = k2 + @as(c_int, 1);
                 if (tmp >= 0) break :blk A + @as(usize, @intCast(tmp)) else break :blk A - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-            }).* = @as(f32, @floatCast(-sin((@as(f64, @floatFromInt(@as(c_int, 4) * k)) * 3.141592653589793) / @as(f64, @floatFromInt(n)))));
+            }).* = @as(f32, @floatCast(-@sin((@as(f64, @floatFromInt(@as(c_int, 4) * k)) * 3.141592653589793) / @as(f64, @floatFromInt(n)))));
             (blk: {
                 const tmp = k2;
                 if (tmp >= 0) break :blk B + @as(usize, @intCast(tmp)) else break :blk B - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-            }).* = @as(f32, @floatCast(cos(((@as(f64, @floatFromInt(k2 + @as(c_int, 1))) * 3.141592653589793) / @as(f64, @floatFromInt(n))) / @as(f64, @floatFromInt(@as(c_int, 2)))))) * 0.5;
+            }).* = @as(f32, @floatCast(@cos(((@as(f64, @floatFromInt(k2 + @as(c_int, 1))) * 3.141592653589793) / @as(f64, @floatFromInt(n))) / @as(f64, @floatFromInt(@as(c_int, 2)))))) * 0.5;
             (blk: {
                 const tmp = k2 + @as(c_int, 1);
                 if (tmp >= 0) break :blk B + @as(usize, @intCast(tmp)) else break :blk B - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-            }).* = @as(f32, @floatCast(sin(((@as(f64, @floatFromInt(k2 + @as(c_int, 1))) * 3.141592653589793) / @as(f64, @floatFromInt(n))) / @as(f64, @floatFromInt(@as(c_int, 2)))))) * 0.5;
+            }).* = @as(f32, @floatCast(@sin(((@as(f64, @floatFromInt(k2 + @as(c_int, 1))) * 3.141592653589793) / @as(f64, @floatFromInt(n))) / @as(f64, @floatFromInt(@as(c_int, 2)))))) * 0.5;
         }
     }
     {
@@ -1677,11 +1404,11 @@ pub fn compute_twiddle_factors(arg_n: c_int, arg_A: [*c]f32, arg_B: [*c]f32, arg
             (blk: {
                 const tmp = k2;
                 if (tmp >= 0) break :blk C_1 + @as(usize, @intCast(tmp)) else break :blk C_1 - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-            }).* = @as(f32, @floatCast(cos((@as(f64, @floatFromInt(@as(c_int, 2) * (k2 + @as(c_int, 1)))) * 3.141592653589793) / @as(f64, @floatFromInt(n)))));
+            }).* = @as(f32, @floatCast(@cos((@as(f64, @floatFromInt(@as(c_int, 2) * (k2 + @as(c_int, 1)))) * 3.141592653589793) / @as(f64, @floatFromInt(n)))));
             (blk: {
                 const tmp = k2 + @as(c_int, 1);
                 if (tmp >= 0) break :blk C_1 + @as(usize, @intCast(tmp)) else break :blk C_1 - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-            }).* = @as(f32, @floatCast(-sin((@as(f64, @floatFromInt(@as(c_int, 2) * (k2 + @as(c_int, 1)))) * 3.141592653589793) / @as(f64, @floatFromInt(n)))));
+            }).* = @as(f32, @floatCast(-@sin((@as(f64, @floatFromInt(@as(c_int, 2) * (k2 + @as(c_int, 1)))) * 3.141592653589793) / @as(f64, @floatFromInt(n)))));
         }
     }
 }
@@ -1700,7 +1427,7 @@ pub fn compute_window(arg_n: c_int, arg_window: [*c]f32) callconv(.c) void {
             (blk: {
                 const tmp = i;
                 if (tmp >= 0) break :blk window + @as(usize, @intCast(tmp)) else break :blk window - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-            }).* = @as(f32, @floatCast(sin((0.5 * 3.141592653589793) * @as(f64, @floatCast(square(@as(f32, @floatCast(sin((((@as(f64, @floatFromInt(i - @as(c_int, 0))) + 0.5) / @as(f64, @floatFromInt(n2))) * 0.5) * 3.141592653589793)))))))));
+            }).* = @as(f32, @floatCast(@sin((0.5 * 3.141592653589793) * @as(f64, @floatCast(square(@as(f32, @floatCast(@sin((((@as(f64, @floatFromInt(i - @as(c_int, 0))) + 0.5) / @as(f64, @floatFromInt(n2))) * 0.5) * 3.141592653589793)))))))));
         }
     }
 }
@@ -1805,8 +1532,8 @@ pub fn neighbors(arg_x: [*c]uint16, arg_n: c_int, arg_plow: [*c]c_int, arg_phigh
     }
 }
 pub const stbv__floor_ordering = extern struct {
-    x: uint16 = @import("std").mem.zeroes(uint16),
-    id: uint16 = @import("std").mem.zeroes(uint16),
+    x: uint16 = std.mem.zeroes(uint16),
+    id: uint16 = std.mem.zeroes(uint16),
 };
 pub fn point_compare(arg_p: ?*const anyopaque, arg_q: ?*const anyopaque) callconv(.c) c_int {
     var p = arg_p;
@@ -1819,30 +1546,17 @@ pub fn point_compare(arg_p: ?*const anyopaque, arg_q: ?*const anyopaque) callcon
     _ = &b;
     return if (@as(c_int, @bitCast(@as(c_uint, a.*.x))) < @as(c_int, @bitCast(@as(c_uint, b.*.x)))) -@as(c_int, 1) else @intFromBool(@as(c_int, @bitCast(@as(c_uint, a.*.x))) > @as(c_int, @bitCast(@as(c_uint, b.*.x))));
 }
-pub fn get8(arg_z: [*c]vorb) callconv(.c) uint8 {
-    var z = arg_z;
-    _ = &z;
-    if (z.*.stream != null) {
-        if (z.*.stream >= z.*.stream_end) {
-            z.*.eof = 1;
-            return 0;
-        }
-        return (blk: {
-            const ref = &z.*.stream;
-            const tmp = ref.*;
-            ref.* += 1;
-            break :blk tmp;
-        }).*;
+pub fn get8(z: [*c]vorb) callconv(.c) uint8 {
+    if (z.*.stream >= z.*.stream_end) {
+        z.*.eof = 1;
+        return 0;
     }
-    {
-        var c: c_int = fgetc(z.*.f);
-        _ = &c;
-        if (c == -@as(c_int, 1)) {
-            z.*.eof = 1;
-            return 0;
-        }
-        return @as(uint8, @bitCast(@as(i8, @truncate(c))));
-    }
+    return (blk: {
+        const ref = &z.*.stream;
+        const tmp = ref.*;
+        ref.* += 1;
+        break :blk tmp;
+    }).*;
 }
 pub fn get32(arg_f: [*c]vorb) callconv(.c) uint32 {
     var f = arg_f;
@@ -1862,43 +1576,25 @@ pub fn getn(arg_z: [*c]vorb, arg_data: [*c]uint8, arg_n: c_int) callconv(.c) c_i
     _ = &data;
     var n = arg_n;
     _ = &n;
-    if (z.*.stream != null) {
-        if ((z.*.stream + @as(usize, @bitCast(@as(isize, @intCast(n))))) > z.*.stream_end) {
-            z.*.eof = 1;
-            return 0;
-        }
-        _ = __builtin___memcpy_chk(@as(?*anyopaque, @ptrCast(data)), @as(?*const anyopaque, @ptrCast(z.*.stream)), @as(c_ulong, @bitCast(@as(c_long, n))), __builtin_object_size(@as(?*const anyopaque, @ptrCast(data)), @as(c_int, 0)));
-        z.*.stream += @as(usize, @bitCast(@as(isize, @intCast(n))));
-        return 1;
-    }
-    if (fread(@as(?*anyopaque, @ptrCast(data)), @as(c_ulong, @bitCast(@as(c_long, n))), @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))), z.*.f) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))) return 1 else {
+    if ((z.*.stream + @as(usize, @bitCast(@as(isize, @intCast(n))))) > z.*.stream_end) {
         z.*.eof = 1;
         return 0;
     }
-    return 0;
+    _ = __builtin___memcpy_chk(@as(?*anyopaque, @ptrCast(data)), @as(?*const anyopaque, @ptrCast(z.*.stream)), @as(c_ulong, @bitCast(@as(c_long, n))), __builtin_object_size(@as(?*const anyopaque, @ptrCast(data)), @as(c_int, 0)));
+    z.*.stream += @as(usize, @bitCast(@as(isize, @intCast(n))));
+    return 1;
 }
-pub fn skip(arg_z: [*c]vorb, arg_n: c_int) callconv(.c) void {
-    var z = arg_z;
-    _ = &z;
-    var n = arg_n;
-    _ = &n;
-    if (z.*.stream != null) {
-        const available: usize = @intFromPtr(z.*.stream_end) - @intFromPtr(z.*.stream);
-        var advance: usize = 0;
-        if (n > 0) advance = @as(usize, @intCast(n));
-        if (advance >= available) {
-            z.*.stream = z.*.stream_end;
-            z.*.eof = 1;
-        } else {
-            z.*.stream += advance;
-        }
-        return;
+pub fn skip(z: [*c]vorb, n: c_int) callconv(.c) void {
+    const available: usize = @intFromPtr(z.*.stream_end) - @intFromPtr(z.*.stream);
+    var advance: usize = 0;
+    if (n > 0) advance = @as(usize, @intCast(n));
+    if (advance >= available) {
+        z.*.stream = z.*.stream_end;
+        z.*.eof = 1;
+    } else {
+        z.*.stream += advance;
     }
-    {
-        var x: c_long = ftell(z.*.f);
-        _ = &x;
-        _ = fseek(z.*.f, x + @as(c_long, @bitCast(@as(c_long, n))), @as(c_int, 0));
-    }
+    return;
 }
 pub fn set_file_offset(arg_f: [*c]stb_vorbis, arg_loc: c_uint) callconv(.c) c_int {
     var f = arg_f;
@@ -1907,26 +1603,14 @@ pub fn set_file_offset(arg_f: [*c]stb_vorbis, arg_loc: c_uint) callconv(.c) c_in
     _ = &loc;
     if (f.*.push_mode != 0) return 0;
     f.*.eof = 0;
-    if (f.*.stream != null) {
-        if (((f.*.stream_start + loc) >= f.*.stream_end) or ((f.*.stream_start + loc) < f.*.stream_start)) {
-            f.*.stream = f.*.stream_end;
-            f.*.eof = 1;
-            return 0;
-        } else {
-            f.*.stream = f.*.stream_start + loc;
-            return 1;
-        }
-    }
-    if (((loc +% f.*.f_start) < loc) or (loc >= @as(c_uint, 2147483648))) {
-        loc = @as(c_uint, @bitCast(@as(c_int, 2147483647)));
+    if (((f.*.stream_start + loc) >= f.*.stream_end) or ((f.*.stream_start + loc) < f.*.stream_start)) {
+        f.*.stream = f.*.stream_end;
         f.*.eof = 1;
+        return 0;
     } else {
-        loc +%= @as(c_uint, @bitCast(f.*.f_start));
+        f.*.stream = f.*.stream_start + loc;
+        return 1;
     }
-    if (!(fseek(f.*.f, @as(c_long, @bitCast(@as(c_ulong, loc))), @as(c_int, 0)) != 0)) return 1;
-    f.*.eof = 1;
-    _ = fseek(f.*.f, @as(c_long, @bitCast(@as(c_ulong, f.*.f_start))), @as(c_int, 2));
-    return 0;
 }
 pub var ogg_page_header: [4]uint8 = [4]uint8{
     79,
@@ -4747,17 +4431,11 @@ pub fn vorbis_finish_frame(arg_f: [*c]stb_vorbis, arg_len: c_int, arg_left: c_in
     f.*.samples_output +%= @as(uint32, @bitCast(right - left));
     return right - left;
 }
-pub fn vorbis_pump_first_frame(arg_f: [*c]stb_vorbis) callconv(.c) c_int {
-    var f = arg_f;
-    _ = &f;
+pub fn vorbis_pump_first_frame(f: [*c]stb_vorbis) callconv(.c) c_int {
     var len: c_int = undefined;
-    _ = &len;
     var right: c_int = undefined;
-    _ = &right;
     var left: c_int = undefined;
-    _ = &left;
     var res: c_int = undefined;
-    _ = &res;
     res = vorbis_decode_packet(f, &len, &left, &right);
     if (res != 0) {
         _ = vorbis_finish_frame(f, len, left, right);
@@ -4822,7 +4500,7 @@ pub fn is_whole_packet_present(arg_f: [*c]stb_vorbis) callconv(.c) c_int {
     }
     return 1;
 }
-pub export fn start_decoder(arg_f: [*c]vorb) callconv(.c) c_int {
+pub fn start_decoder(arg_f: [*c]vorb) !c_int {
     const f = arg_f;
     var header: [6]uint8 = undefined;
     var max_submaps: c_int = 0;
@@ -4973,7 +4651,7 @@ pub export fn start_decoder(arg_f: [*c]vorb) callconv(.c) c_int {
     if (f.*.codebooks == null) {
         return @"error"(f, @as(c_uint, @bitCast(VORBIS_outofmem)));
     }
-    @memset(f.*.codebooks[0..@as(usize, @intCast(f.*.codebook_count))], @import("std").mem.zeroes(Codebook));
+    @memset(f.*.codebooks[0..@as(usize, @intCast(f.*.codebook_count))], std.mem.zeroes(Codebook));
 
     // Parse codebooks
     i = 0;
@@ -5123,9 +4801,8 @@ pub export fn start_decoder(arg_f: [*c]vorb) callconv(.c) c_int {
                 c.*.value_bits = @intCast(get_bits(f, 4) + 1);
                 c.*.sequence_p = @intCast(get_bits(f, 1));
                 if (c.*.lookup_type == 1) {
-                    const val = lookup1_values(c.*.entries, c.*.dimensions);
-                    if (val < 0) return @"error"(f, @as(c_uint, @bitCast(VORBIS_invalid_setup)));
-                    c.*.lookup_values = @as(uint32, @intCast(val));
+                    const val = try lookup1_values(c.*.entries, c.*.dimensions);
+                    c.*.lookup_values = @intCast(val);
                 } else {
                     c.*.lookup_values = @as(uint32, @intCast(c.*.entries * c.*.dimensions));
                 }
@@ -5315,7 +4992,7 @@ pub export fn start_decoder(arg_f: [*c]vorb) callconv(.c) c_int {
     f.*.residue_count = @as(c_int, @intCast(get_bits(f, 6) + 1));
     f.*.residue_config = @as([*c]Residue, @ptrCast(@alignCast(setup_malloc(f, f.*.residue_count * @sizeOf(Residue)))));
     if (f.*.residue_config == null) return @"error"(f, @as(c_uint, @bitCast(VORBIS_outofmem)));
-    @memset(f.*.residue_config[0..@as(usize, @intCast(f.*.residue_count))], @import("std").mem.zeroes(Residue));
+    @memset(f.*.residue_config[0..@as(usize, @intCast(f.*.residue_count))], std.mem.zeroes(Residue));
 
     i = 0;
     while (i < f.*.residue_count) : (i += 1) {
@@ -5377,7 +5054,7 @@ pub export fn start_decoder(arg_f: [*c]vorb) callconv(.c) c_int {
     f.*.mapping_count = @as(c_int, @intCast(get_bits(f, 6) + 1));
     f.*.mapping = @as([*c]Mapping, @ptrCast(@alignCast(setup_malloc(f, @as(c_int, @intCast(f.*.mapping_count)) * @sizeOf(Mapping)))));
     if (f.*.mapping == null) return @"error"(f, @as(c_uint, @bitCast(VORBIS_outofmem)));
-    @memset(f.*.mapping[0..@as(usize, @intCast(f.*.mapping_count))], @import("std").mem.zeroes(Mapping));
+    @memset(f.*.mapping[0..@as(usize, @intCast(f.*.mapping_count))], std.mem.zeroes(Mapping));
 
     i = 0;
     while (i < f.*.mapping_count) : (i += 1) {
@@ -5655,9 +5332,6 @@ pub fn vorbis_deinit(arg_p: [*c]stb_vorbis) callconv(.c) void {
             setup_free(p, @as(?*anyopaque, @ptrCast(p.*.bit_reverse[@as(c_uint, @intCast(i))])));
         }
     }
-    if (p.*.close_on_free != 0) {
-        _ = fclose(p.*.f);
-    }
 }
 pub fn vorbis_init(arg_p: [*c]stb_vorbis, arg_z: [*c]const stb_vorbis_alloc) callconv(.c) void {
     var p = arg_p;
@@ -5676,7 +5350,6 @@ pub fn vorbis_init(arg_p: [*c]stb_vorbis, arg_z: [*c]const stb_vorbis_alloc) cal
     p.*.codebooks = null;
     p.*.page_crc_tests = -@as(c_int, 1);
     p.*.close_on_free = 0;
-    p.*.f = null;
 }
 pub fn vorbis_alloc(arg_f: [*c]stb_vorbis) callconv(.c) [*c]stb_vorbis {
     var f = arg_f;
@@ -5997,165 +5670,6 @@ pub fn go_to_page_before(arg_f: [*c]stb_vorbis, arg_limit_offset: c_uint) callco
     }
     return 0;
 }
-pub export fn seek_to_sample_coarse(arg_f: [*c]stb_vorbis, arg_sample_number: uint32) callconv(.c) c_int {
-    const f = arg_f;
-    const sample_number = arg_sample_number;
-
-    var left: ProbedPage = undefined;
-    var right: ProbedPage = undefined;
-    var mid: ProbedPage = undefined;
-    var offset: f64 = 0.0;
-    var bytes_per_sample: f64 = 0.0;
-    var probe: c_int = 0;
-
-    // find the last page and validate the target sample
-    const stream_length = stb_vorbis_stream_length_in_samples(f);
-    if (stream_length == 0) return @"error"(f, @as(c_uint, @bitCast(VORBIS_seek_without_length)));
-    if (sample_number > stream_length) return @"error"(f, @as(c_uint, @bitCast(VORBIS_seek_invalid)));
-
-    // maximum difference between window-center and right-start
-    const padding = (@as(uint32, @intCast(f.*.blocksize_1)) - @as(uint32, @intCast(f.*.blocksize_0))) >> 2;
-    const last_sample_limit: uint32 = if (sample_number < padding) 0 else sample_number - padding;
-
-    left = f.*.p_first;
-    while (left.last_decoded_sample == ~@as(uint32, 0)) {
-        _ = set_file_offset(f, left.page_end);
-        if (get_seek_page_info(f, &left) == 0) {
-            _ = stb_vorbis_seek_start(f);
-            return @"error"(f, @as(c_uint, @bitCast(VORBIS_seek_failed)));
-        }
-    }
-
-    right = f.*.p_last;
-    if (right.last_decoded_sample == ~@as(uint32, 0)) {
-        @panic("seek_to_sample_coarse: right.last_decoded_sample == ~0U");
-    }
-
-    // starting from the start is handled differently
-    if (last_sample_limit <= left.last_decoded_sample) {
-        if (stb_vorbis_seek_start(f) != 0) {
-            if (f.*.current_loc > sample_number) {
-                return @"error"(f, @as(c_uint, @bitCast(VORBIS_seek_failed)));
-            }
-            return 1;
-        }
-        return 0;
-    }
-
-    // Main search logic
-    const search_result: c_int = search: {
-        while (left.page_end != right.page_start) {
-            if (left.page_end >= right.page_start) {
-                @panic("seek_to_sample_coarse: left.page_end >= right.page_start");
-            }
-
-            const delta = right.page_start - left.page_end;
-            if (delta <= 65536) {
-                _ = set_file_offset(f, left.page_end);
-            } else {
-                if (probe < 2) {
-                    if (probe == 0) {
-                        const data_bytes = @as(f64, @floatFromInt(right.page_end - left.page_start));
-                        bytes_per_sample = data_bytes / @as(f64, @floatFromInt(right.last_decoded_sample));
-                        offset = @as(f64, @floatFromInt(left.page_start)) + bytes_per_sample * @as(f64, @floatFromInt(last_sample_limit - left.last_decoded_sample));
-                    } else {
-                        var err = (@as(f64, @floatFromInt(last_sample_limit)) - @as(f64, @floatFromInt(mid.last_decoded_sample))) * bytes_per_sample;
-                        if (err >= 0 and err < 8000) err = 8000;
-                        if (err < 0 and err > -8000) err = -8000;
-                        offset += err * 2;
-                    }
-
-                    if (offset < @as(f64, @floatFromInt(left.page_end))) {
-                        offset = @as(f64, @floatFromInt(left.page_end));
-                    }
-                    if (offset > @as(f64, @floatFromInt(right.page_start - 65536))) {
-                        offset = @as(f64, @floatFromInt(right.page_start - 65536));
-                    }
-
-                    _ = set_file_offset(f, @as(c_uint, @intFromFloat(offset)));
-                } else {
-                    _ = set_file_offset(f, left.page_end + (delta / 2) - 32768);
-                }
-
-                if (vorbis_find_page(f, null, null) == 0) break :search 0;
-            }
-
-            while (true) {
-                if (get_seek_page_info(f, &mid) == 0) break :search 0;
-                if (mid.last_decoded_sample != ~@as(uint32, 0)) break;
-                _ = set_file_offset(f, mid.page_end);
-                if (mid.page_start >= right.page_start) {
-                    @panic("seek_to_sample_coarse: mid.page_start >= right.page_start");
-                }
-            }
-
-            if (mid.page_start == right.page_start) {
-                if (probe >= 2 or delta <= 65536) break;
-            } else {
-                if (last_sample_limit < mid.last_decoded_sample) {
-                    right = mid;
-                } else {
-                    left = mid;
-                }
-            }
-
-            probe += 1;
-        }
-
-        // seek back to start of the last packet
-        var page_start = left.page_start;
-        _ = set_file_offset(f, page_start);
-        if (start_page(f) == 0) break :search 0;
-        var end_pos = f.*.end_seg_with_known_loc;
-        if (end_pos < 0) {
-            @panic("seek_to_sample_coarse: end_pos < 0");
-        }
-
-        while (true) {
-            var i = end_pos;
-            while (i > 0) : (i -= 1) {
-                if (f.*.segments[@as(usize, @intCast(i - 1))] != 255) break;
-            }
-
-            const start_seg_with_known_loc = i;
-
-            if (start_seg_with_known_loc > 0 or (f.*.page_flag & @as(c_int, @bitCast(@as(c_uint, PAGEFLAG_continued_packet)))) == 0) {
-                // prepare to start decoding
-                f.*.current_loc_valid = FALSE;
-                f.*.last_seg = FALSE;
-                f.*.valid_bits = 0;
-                f.*.packet_bytes = 0;
-                f.*.bytes_in_seg = 0;
-                f.*.previous_length = 0;
-                f.*.next_seg = start_seg_with_known_loc;
-
-                var skip_i: c_int = 0;
-                while (skip_i < start_seg_with_known_loc) : (skip_i += 1) {
-                    skip(f, f.*.segments[@as(usize, @intCast(skip_i))]);
-                }
-
-                // start decoding
-                if (vorbis_pump_first_frame(f) == 0) break :search 0;
-                if (f.*.current_loc > sample_number) break :search 0;
-                break :search 1;
-            }
-
-            // the final packet begins on an earlier page
-            if (go_to_page_before(f, page_start) == 0) break :search 0;
-
-            page_start = stb_vorbis_get_file_offset(f);
-            if (start_page(f) == 0) break :search 0;
-            end_pos = f.*.segment_count - 1;
-        }
-    };
-
-    if (search_result == 0) {
-        _ = stb_vorbis_seek_start(f);
-        return @"error"(f, @as(c_uint, @bitCast(VORBIS_seek_failed)));
-    }
-
-    return 1;
-}
 pub fn peek_decode_initial(arg_f: [*c]vorb, arg_p_left_start: [*c]c_int, arg_p_left_end: [*c]c_int, arg_p_right_start: [*c]c_int, arg_p_right_end: [*c]c_int, arg_mode: [*c]c_int) callconv(.c) c_int {
     var f = arg_f;
     _ = &f;
@@ -6193,32 +5707,32 @@ pub fn peek_decode_initial(arg_f: [*c]vorb, arg_p_left_start: [*c]c_int, arg_p_l
 pub var channel_position: [7][6]int8 = [7][6]int8{
     [1]int8{
         0,
-    } ++ [1]int8{@import("std").mem.zeroes(int8)} ** 5,
+    } ++ [1]int8{std.mem.zeroes(int8)} ** 5,
     [1]int8{
         @as(int8, @bitCast(@as(i8, @truncate((@as(c_int, 2) | @as(c_int, 4)) | @as(c_int, 1))))),
-    } ++ [1]int8{@import("std").mem.zeroes(int8)} ** 5,
+    } ++ [1]int8{std.mem.zeroes(int8)} ** 5,
     [2]int8{
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 2) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 4) | @as(c_int, 1))))),
-    } ++ [1]int8{@import("std").mem.zeroes(int8)} ** 4,
+    } ++ [1]int8{std.mem.zeroes(int8)} ** 4,
     [3]int8{
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 2) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate((@as(c_int, 2) | @as(c_int, 4)) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 4) | @as(c_int, 1))))),
-    } ++ [1]int8{@import("std").mem.zeroes(int8)} ** 3,
+    } ++ [1]int8{std.mem.zeroes(int8)} ** 3,
     [4]int8{
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 2) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 4) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 2) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 4) | @as(c_int, 1))))),
-    } ++ [1]int8{@import("std").mem.zeroes(int8)} ** 2,
+    } ++ [1]int8{std.mem.zeroes(int8)} ** 2,
     [5]int8{
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 2) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate((@as(c_int, 2) | @as(c_int, 4)) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 4) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 2) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 4) | @as(c_int, 1))))),
-    } ++ [1]int8{@import("std").mem.zeroes(int8)} ** 1,
+    } ++ [1]int8{std.mem.zeroes(int8)} ** 1,
     [6]int8{
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 2) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate((@as(c_int, 2) | @as(c_int, 4)) | @as(c_int, 1))))),
@@ -6616,7 +6130,7 @@ pub const TRUE = @as(c_int, 1);
 pub const FALSE = @as(c_int, 0);
 pub inline fn STBV_NOTUSED(v: anytype) anyopaque {
     _ = &v;
-    return @import("std").zig.c_translation.cast(anyopaque, @import("std").zig.c_translation.sizeof(v));
+    return std.zig.c_translation.cast(anyopaque, std.zig.c_translation.sizeof(v));
 }
 pub const FAST_HUFFMAN_TABLE_SIZE = @as(c_int, 1) << STB_VORBIS_FAST_HUFFMAN_LENGTH;
 pub const FAST_HUFFMAN_TABLE_MASK = FAST_HUFFMAN_TABLE_SIZE - @as(c_int, 1);
@@ -6647,7 +6161,7 @@ pub inline fn temp_block_array(f: anytype, count: anytype, size: anytype) @TypeO
     _ = &size;
     return make_block_array(temp_alloc(f, array_size_required(count, size)), count, size);
 }
-pub const CRC32_POLY = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x04c11db7, .hex);
+pub const CRC32_POLY = std.zig.c_translation.promoteIntLiteral(c_int, 0x04c11db7, .hex);
 pub const NO_CODE = @as(c_int, 255);
 pub const STBV_CDECL = "";
 pub inline fn USE_MEMORY(z: anytype) @TypeOf(z.*.stream) {
@@ -6674,7 +6188,7 @@ pub inline fn CODEBOOK_ELEMENT_BASE(c: anytype) @TypeOf(@as(c_int, 0)) {
     return @as(c_int, 0);
 }
 pub const LIBVORBIS_MDCT = @as(c_int, 0);
-pub const SAMPLE_unknown = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xffffffff, .hex);
+pub const SAMPLE_unknown = std.zig.c_translation.promoteIntLiteral(c_int, 0xffffffff, .hex);
 pub const PLAYBACK_MONO = @as(c_int, 1);
 pub const PLAYBACK_LEFT = @as(c_int, 2);
 pub const PLAYBACK_RIGHT = @as(c_int, 4);

@@ -21,12 +21,20 @@ fn translateError(code: c_int) api.ReadError {
 
 fn infoFromHandle(handle: *c.stb_vorbis) api.AudioInfo {
     const info = c.stb_vorbis_get_info(handle);
+    const sample_rate: u32 = @intCast(info.sample_rate);
+    const channels: u8 = @intCast(info.channels);
+    const total_samples = c.stb_vorbis_stream_length_in_samples(handle);
+    const total_frames: usize = if (total_samples == 0) 0 else @intCast(total_samples);
+    const duration_seconds: f64 = if (sample_rate != 0 and total_frames != 0)
+        @as(f64, @floatFromInt(total_frames)) / @as(f64, @floatFromInt(sample_rate))
+    else
+        0.0;
     return .{
-        .sample_rate = @intCast(info.sample_rate),
-        .channels = @intCast(info.channels),
+        .sample_rate = sample_rate,
+        .channels = channels,
         .sample_type = SampleType.i16,
-        .total_frames = 0,
-        .duration_seconds = 0.0,
+        .total_frames = total_frames,
+        .duration_seconds = duration_seconds,
     };
 }
 
@@ -34,14 +42,14 @@ fn openMemory(allocator: std.mem.Allocator, bytes: []const u8) !*c.stb_vorbis {
     _ = allocator; // Not needed when using null alloc
     var err: c_int = 0;
     // Pass null for alloc config to let stb_vorbis use malloc
-    const handle = c.stb_vorbis_open_memory(bytes.ptr, @intCast(bytes.len), &err, null);
+    const handle = try c.stb_vorbis_open_memory(bytes.ptr, @intCast(bytes.len), &err, null);
     if (handle == null) {
         return translateError(err);
     }
     return handle;
 }
 
-fn readAllFromFile(allocator: std.mem.Allocator, stream: *io.ReadStream) api.ReadError![]u8 {
+fn readAllFromFile(allocator: std.mem.Allocator, stream: *io.ReadStream) ![]u8 {
     // For file streams, go directly to the file handle to read efficiently
     if (stream.* == .file) {
         const file = stream.file.file;
@@ -53,7 +61,7 @@ fn readAllFromFile(allocator: std.mem.Allocator, stream: *io.ReadStream) api.Rea
     return error.ReadFailed;
 }
 
-pub fn probe(stream: *io.ReadStream) api.ReadError!bool {
+pub fn probe(stream: *io.ReadStream) !bool {
     const pos = stream.getPos();
     defer stream.seekTo(pos) catch {};
 
@@ -80,7 +88,7 @@ pub fn probe(stream: *io.ReadStream) api.ReadError!bool {
     }
 }
 
-pub fn info_reader(stream: *io.ReadStream) api.ReadError!api.AudioInfo {
+pub fn info_reader(stream: *io.ReadStream) !api.AudioInfo {
     const pos = stream.getPos();
     defer stream.seekTo(pos) catch {};
 
@@ -104,7 +112,7 @@ pub fn info_reader(stream: *io.ReadStream) api.ReadError!api.AudioInfo {
     };
 }
 
-pub fn decode_from_bytes(allocator: std.mem.Allocator, bytes: []const u8) api.ReadError!api.Audio {
+pub fn decode_from_bytes(allocator: std.mem.Allocator, bytes: []const u8) !api.Audio {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const arena_allocator = arena.allocator();
@@ -186,7 +194,7 @@ const stream_vtable = format.StreamDecoderVTable{
     .deinit = streamDeinit,
 };
 
-pub fn open_stream(allocator: std.mem.Allocator, stream: *io.ReadStream) api.ReadError!*format.AnyStreamDecoder {
+pub fn open_stream(allocator: std.mem.Allocator, stream: *io.ReadStream) !*format.AnyStreamDecoder {
     const pos = stream.getPos();
     defer stream.seekTo(pos) catch {};
 
@@ -211,7 +219,7 @@ pub fn open_stream(allocator: std.mem.Allocator, stream: *io.ReadStream) api.Rea
         .alloc_buffer = vorbis_buffer.ptr,
         .alloc_buffer_length_in_bytes = @intCast(vorbis_buffer.len),
     };
-    const handle = c.stb_vorbis_open_memory(bytes.ptr, @intCast(bytes.len), &err, &alloc_config);
+    const handle = try c.stb_vorbis_open_memory(bytes.ptr, @intCast(bytes.len), &err, &alloc_config);
     if (handle == null) {
         allocator.free(vorbis_buffer);
         return translateError(err);
@@ -236,7 +244,7 @@ pub fn open_stream(allocator: std.mem.Allocator, stream: *io.ReadStream) api.Rea
     return any;
 }
 
-pub fn encode(writer: *std.Io.Writer, audio: *const api.Audio) api.WriteError!void {
+pub fn encode(writer: *std.Io.Writer, audio: *const api.Audio) !void {
     _ = writer;
     _ = audio;
     return error.Unsupported;
