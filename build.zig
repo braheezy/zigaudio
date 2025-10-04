@@ -11,12 +11,13 @@ pub fn build(b: *std.Build) void {
     );
     const aac_lib = faad2_dep.artifact("faad2");
 
-    const lib_mod = b.createModule(.{
+    const lib_mod = b.addModule("zigaudio", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
 
+    lib_mod.linkLibrary(aac_lib);
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("examples/player/main.zig"),
         .target = target,
@@ -33,7 +34,6 @@ pub fn build(b: *std.Build) void {
         .root_module = exe_mod,
     });
     b.installArtifact(exe);
-    exe.linkLibrary(aac_lib);
     const run_cmd = b.addRunArtifact(exe);
 
     if (b.args) |args| {
@@ -58,7 +58,6 @@ pub fn build(b: *std.Build) void {
         .root_module = bench_mod,
     });
     b.installArtifact(bench_exe);
-    bench_exe.linkLibrary(aac_lib);
     const bench_run = b.addRunArtifact(bench_exe);
     if (b.args) |args| bench_run.addArgs(args);
     const bench_step = b.step("bench", "Run the bench example");
@@ -76,7 +75,6 @@ pub fn build(b: *std.Build) void {
         .root_module = bench_file_mod,
     });
     b.installArtifact(bench_file_exe);
-    bench_file_exe.linkLibrary(aac_lib);
 
     // Convert example
     const convert_mod = b.createModule(.{
@@ -90,14 +88,12 @@ pub fn build(b: *std.Build) void {
         .root_module = convert_mod,
     });
     b.installArtifact(convert_exe);
-    convert_exe.linkLibrary(aac_lib);
 
     // Test target
     const test_exe = b.addTest(.{
         .name = "test",
         .root_module = lib_mod,
     });
-    test_exe.linkLibrary(aac_lib);
     const test_run = b.addRunArtifact(test_exe);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&test_run.step);
