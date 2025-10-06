@@ -1,57 +1,109 @@
 const std = @import("std");
-const qoa = @import("qoa.zig");
-const wav = @import("wav.zig");
-const mp3 = @import("mp3.zig");
-const aac = @import("aac.zig");
-const vorbis = @import("vorbis.zig");
 const api = @import("root.zig");
-const io = @import("io.zig");
+const BitReader = @import("BitReader.zig");
 
+// Simplified format registry - only WAV for now during migration
 pub const supported_formats: []const VTable = &[_]VTable{
-    qoa.vtable,
-    wav.vtable,
-    vorbis.vtable, // Vorbis has strong Ogg magic bytes, check before MP3
-    aac.vtable,
-    mp3.vtable, // MP3 has weak magic and can false-positive, check last
+    @import("wav.zig").vtable,
 };
 
 pub const Id = enum {
     unknown,
-    qoa,
+    // qoa,
     wav,
-    vorbis,
-    mp3,
-    aac,
+    // flac,
+    // vorbis,
+    // mp3,
+    // aac,
 };
 
-pub const ProbeFn = *const fn (stream: *io.ReadStream) anyerror!bool;
-pub const InfoReaderFn = *const fn (stream: *io.ReadStream) anyerror!api.AudioInfo;
-pub const DecodeBytesFn = *const fn (allocator: std.mem.Allocator, bytes: []const u8) anyerror!api.Audio;
-pub const EncodeFn = *const fn (writer: *std.Io.Writer, audio: *const api.Audio) anyerror!void;
-
-pub const StreamDecoderVTable = struct {
-    read: *const fn (*AnyStreamDecoder, dst: []u8) anyerror!usize,
-    deinit: *const fn (*AnyStreamDecoder) void,
-};
-
-pub const AnyStreamDecoder = struct {
-    vtable: *const StreamDecoderVTable,
+/// Unified decoder interface - all formats implement this
+pub const Decoder = struct {
+    vtable: *const DecoderVTable,
     context: *anyopaque,
     info: api.AudioInfo,
+    allocator: std.mem.Allocator,
+    id: Id,
 
-    pub fn read(self: *AnyStreamDecoder, dst: []u8) !usize {
+    /// Read decoded PCM samples as interleaved i16
+    pub fn read(self: *Decoder, dst: []i16) !usize {
         return self.vtable.read(self, dst);
     }
-    pub fn deinit(self: *AnyStreamDecoder) void {
+
+    /// Clean up decoder resources
+    pub fn deinit(self: *Decoder) void {
         self.vtable.deinit(self);
+    }
+
+    /// Seek to frame position (optional, may return error.Unseekable)
+    pub fn seekTo(self: *Decoder, frame: usize) !void {
+        if (self.vtable.seek) |seek_fn| {
+            return seek_fn(self, frame);
+        }
+        return error.Unseekable;
     }
 };
 
+/// Function signatures for decoder operations
+pub const DecoderVTable = struct {
+    read: *const fn (*Decoder, dst: []i16) anyerror!usize,
+    deinit: *const fn (*Decoder) void,
+    seek: ?*const fn (*Decoder, frame: usize) anyerror!void = null,
+};
+
+/// Format detection and decoder factory
 pub const VTable = struct {
     id: Id,
-    probe: ProbeFn,
-    info_reader: InfoReaderFn,
-    decode_from_bytes: DecodeBytesFn,
-    open_stream: *const fn (allocator: std.mem.Allocator, stream: *io.ReadStream) anyerror!*AnyStreamDecoder,
-    encode: EncodeFn,
+
+    /// Probe if BitReader contains this format (should not consume data)
+    probe: *const fn (*BitReader) anyerror!bool,
+
+    /// Read audio metadata without full decode
+    info: *const fn (*BitReader) anyerror!api.AudioInfo,
+
+    /// Create streaming decoder from BitReader
+    open: *const fn (allocator: std.mem.Allocator, *BitReader) anyerror!*Decoder,
 };
+
+/// Probe all formats to find a match
+pub fn probe(br: *BitReader) !?Id {
+    const start_pos = br.tell();
+    defer br.seekTo(start_pos); // Reset position after probing
+
+    for (supported_formats) |fmt| {
+        br.seekTo(start_pos);
+        if (fmt.probe(br) catch false) {
+            return fmt.id;
+        }
+    }
+    return null;
+}
+
+/// Get audio info for detected format
+pub fn getInfo(br: *BitReader) !api.AudioInfo {
+    const start_pos = br.tell();
+    defer br.seekTo(start_pos);
+
+    for (supported_formats) |fmt| {
+        br.seekTo(start_pos);
+        if (fmt.probe(br) catch false) {
+            br.seekTo(start_pos);
+            return fmt.info(br);
+        }
+    }
+    return error.Unsupported;
+}
+
+/// Open decoder for detected format
+pub fn openDecoder(allocator: std.mem.Allocator, br: *BitReader) !*Decoder {
+    const start_pos = br.tell();
+
+    for (supported_formats) |fmt| {
+        br.seekTo(start_pos);
+        if (fmt.probe(br) catch false) {
+            br.seekTo(start_pos);
+            return fmt.open(allocator, br);
+        }
+    }
+    return error.Unsupported;
+}

@@ -46,21 +46,19 @@ pub fn main() !void {
             audio_path = arg;
         }
     }
-    const embedded: []const u8 = @embedFile("fanfare_heartcontainer.qoa");
+    // const embedded: []const u8 = @embedFile("fanfare_heartcontainer.qoa");
     if (!play_from_memory and audio_path == null) {
         std.debug.print("usage: player [--mem] [--full] <path>\n", .{});
+        std.debug.print("  --mem  : play embedded audio from memory\n", .{});
+        std.debug.print("  --full : decode entire file to memory first\n", .{});
         return;
     }
 
     if (full_decode_first and !play_from_memory) {
         const path = audio_path.?;
-        // Read entire file then decode from memory
-        var file = try std.fs.cwd().openFile(path, .{ .mode = .read_only });
-        defer file.close();
-        const input_bytes = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
-        defer allocator.free(input_bytes);
-        std.debug.print("player: read {d} bytes\n", .{input_bytes.len});
-        var pcm = zigaudio.decodeMemory(allocator, input_bytes) catch |e| switch (e) {
+        std.debug.print("Performing full decode\n", .{});
+
+        var pcm = zigaudio.decodeFile(allocator, path) catch |e| switch (e) {
             error.Unsupported => {
                 std.debug.print("unsupported format: {s}\n", .{path});
                 return;
@@ -115,45 +113,22 @@ pub fn main() !void {
         return;
     }
 
-    var stream = blk: {
-        if (play_from_memory) {
-            break :blk zigaudio.fromMemory(allocator, embedded) catch |e| switch (e) {
-                error.Unsupported => {
-                    std.debug.print("unsupported format (embedded)\n", .{});
-                    return;
-                },
-                else => {
-                    std.debug.print("error: {}\n", .{e});
-                    return;
-                },
-            };
-        } else {
-            const path = audio_path.?;
+    const path = audio_path.?;
 
-            break :blk zigaudio.fromPath(allocator, path) catch |e| switch (e) {
-                error.Unsupported => {
-                    std.debug.print("unsupported format: {s}\n", .{path});
-                    return;
-                },
-                else => {
-                    std.debug.print("error: {}\n", .{e});
-                    return;
-                },
-            };
-        }
-    };
-    defer stream.deinit();
+    std.debug.print("Opening {s}\n", .{path});
 
-    // Calculate duration
-    const total_seconds_f = stream.info.getDurationSeconds();
+    const decoder = try zigaudio.openFile(allocator, path);
+    defer decoder.deinit();
+
+    const info = decoder.info;
+    const total_seconds_f = info.getDurationSeconds();
     const total_seconds: u64 = @intFromFloat(@floor(total_seconds_f));
 
-    // Print platform
-    std.debug.print("Platform: {s}\n", .{@tagName(builtin.os.tag)});
-
-    // Display clean audio info
-    std.debug.print("Playing: {s}\n", .{if (play_from_memory) "embedded audio" else audio_path.?});
-    std.debug.print("Format: {d} Hz, {d} channels", .{ stream.info.sample_rate, stream.info.channels });
+    std.debug.print("Format: {d} Hz, {d} channels, {s}", .{
+        info.sample_rate,
+        info.channels,
+        @tagName(info.sample_type),
+    });
     if (total_seconds_f > 0.0) {
         if (total_seconds >= 60) {
             const minutes: u64 = total_seconds / 60;
@@ -167,21 +142,20 @@ pub fn main() !void {
     }
 
     const options = zoto.ContextOptions{
-        .sample_rate = stream.info.sample_rate,
-        .channel_count = stream.info.channels,
+        .sample_rate = info.sample_rate,
+        .channel_count = info.channels,
         .format = .int16_le,
     };
 
     const context = try zoto.newContext(allocator, options);
     defer context.deinit();
-
     context.waitForReady();
 
-    const player = try context.newPlayer(stream.readerInterface());
+    var decoder_reader = zigaudio.DecoderReader.init(decoder);
+    const player = try context.newPlayer(decoder_reader.reader());
     defer player.deinit();
 
     std.debug.print("Starting playback...\n", .{});
-
     try player.play();
 
     while (player.isPlaying()) {
