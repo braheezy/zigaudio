@@ -1,19 +1,8 @@
-fn ensureBuffered(rdr: *std.io.Reader, need: usize) api.ReadError![]const u8 {
-    while (true) {
-        const buf = rdr.buffered();
-        if (buf.len >= need) return buf;
-        rdr.fillMore() catch |e| switch (e) {
-            error.EndOfStream => return buf,
-            else => return error.ReadFailed,
-        };
-    }
-}
 const std = @import("std");
 const api = @import("root.zig");
-const fapi = @import("formats.zig");
-const io = @import("io.zig");
+const format = @import("formats.zig");
+const BitReader = @import("BitReader.zig");
 
-const min_filesize = 16;
 const max_channels = 8;
 const slice_len = 20;
 const slices_per_frame = 256;
@@ -191,271 +180,294 @@ pub const Decoder = struct {
     }
 };
 
-pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !struct { samples: []i16, decoder: Decoder } {
-    var decoder = try decodeHeader(bytes);
-    const size = bytes.len;
-    var p: usize = 8;
+const FileHeader = struct {
+    channels: u32,
+    sample_rate: u32,
+    total_frames: usize,
+};
 
-    const total_samples = decoder.sample_count * decoder.channels;
-    var sample_data = try allocator.alloc(i16, total_samples);
-    errdefer allocator.free(sample_data);
-
-    var sample_index: usize = 0;
-    var frame_length: usize = 0;
-    var frame_size: usize = 0;
-
-    // decode all frames
-    while (true) {
-        const sample_ptr = sample_data[sample_index * decoder.channels ..];
-        const result = try decoder.decodeFrame(bytes[p..], size - p, sample_ptr);
-        frame_size = result.frame_size;
-        frame_length = result.frame_length;
-
-        p += frame_size;
-        sample_index += frame_length;
-
-        if (!(frame_size > 0 and sample_index < decoder.sample_count)) {
-            break;
-        }
-    }
-    decoder.sample_count = @intCast(sample_index);
-    return .{ .samples = sample_data, .decoder = decoder };
+fn readByte(br: *BitReader) !u8 {
+    const value = br.readBits(8) catch |err| switch (err) {
+        error.EndOfStream => return error.InvalidFormat,
+        else => return err,
+    };
+    return @intCast(value);
 }
 
-pub fn decodeHeader(bytes: []const u8) !Decoder {
-    if (bytes.len < min_filesize) {
-        return error.InvalidFileSize;
+fn readU32BE(br: *BitReader) !u32 {
+    br.alignToByte();
+    var value: u32 = 0;
+    var i: usize = 0;
+    while (i < 4) : (i += 1) {
+        value = (value << 8) | @as(u32, try readByte(br));
     }
+    return value;
+}
 
-    const header = std.mem.readInt(u64, bytes[0..8], .big);
-    if ((header >> 32) != magic) {
-        return error.InvalidMagicNumber;
+fn readU64BE(br: *BitReader) !u64 {
+    br.alignToByte();
+    var value: u64 = 0;
+    var i: usize = 0;
+    while (i < 8) : (i += 1) {
+        value = (value << 8) | @as(u64, try readByte(br));
     }
+    return value;
+}
 
-    const samples: u32 = @intCast(header & 0xffffffff);
-    if (samples == 0) {
-        return error.InvalidSamples;
+fn readBytes(br: *BitReader, dst: []u8) !void {
+    br.alignToByte();
+    for (dst) |*byte| {
+        byte.* = try readByte(br);
     }
+}
 
-    const frame_header = std.mem.readInt(u64, bytes[8..16], .big);
-    const channels: u32 = @intCast((frame_header >> 56) & 0x0000ff);
-    const sample_rate: u32 = @intCast((frame_header >> 32) & 0xffffff);
+fn readBytesExact(br: *BitReader, dst: []u8) !usize {
+    br.alignToByte();
+    if (dst.len == 0) return 0;
 
-    if (channels == 0 or samples == 0) {
-        return error.InvalidHeader;
+    var index: usize = 0;
+    while (index < dst.len) : (index += 1) {
+        const value = br.readBits(8) catch |err| switch (err) {
+            error.EndOfStream => return index,
+            else => return err,
+        };
+        dst[index] = @intCast(value);
     }
+    return dst.len;
+}
+
+fn parseHeader(br: *BitReader) !FileHeader {
+    br.alignToByte();
+    const file_magic = try readU32BE(br);
+    if (file_magic != magic) return error.InvalidFormat;
+
+    const total_frames_u32 = try readU32BE(br);
+    if (total_frames_u32 == 0) return error.InvalidFormat;
+
+    const frame_header = try readU64BE(br);
+    const channels: u32 = @intCast((frame_header >> 56) & 0x000000FF);
+    const sample_rate: u32 = @intCast((frame_header >> 32) & 0x00FFFFFF);
+
+    if (channels == 0 or channels > max_channels) return error.InvalidFormat;
+    if (sample_rate == 0) return error.InvalidFormat;
 
     return .{
         .channels = channels,
         .sample_rate = sample_rate,
-        .sample_count = samples,
+        .total_frames = @as(usize, total_frames_u32),
     };
 }
 
-// Adapter that exposes QOA as an api.FormatVTable entry
-pub const vtable: fapi.VTable = .{
-    .id = .qoa,
-    .probe = probe_reader,
-    .info_reader = info_reader,
-    .decode_from_bytes = qoa_decode_from_bytes,
-    .open_stream = qoa_open_stream,
-    .encode = qoa_encode,
-};
-
-const QoaStreamCtx = struct {
+const QoaContext = struct {
     allocator: std.mem.Allocator,
-    stream: *io.ReadStream,
-    dec: Decoder,
-    // For streaming, we keep a small staging buffer per frame
-    frame_buf: []u8,
-    frame_pos: usize,
-    frame_len: usize, // bytes available in frame_buf
+    br: *BitReader,
+    decoder: Decoder,
     samples: []i16,
-    sample_bytes_pos: usize,
-    sample_bytes_len: usize,
+    frame_buf: []u8,
+    sample_offset: usize,
+    sample_count: usize,
+    frames_decoded: usize,
+    reached_eof: bool,
 };
 
-fn qoa_stream_read(any: *fapi.AnyStreamDecoder, dst: []u8) api.ReadError!usize {
-    const ctx: *QoaStreamCtx = @ptrCast(@alignCast(any.context));
+fn channelCount(decoder: *const Decoder) usize {
+    return @as(usize, @intCast(decoder.channels));
+}
 
-    var written: usize = 0;
-    const r = ctx.stream.reader();
+fn maxFrameSize(channels: u32) usize {
+    return 8 + (lms_len * 4 * @as(usize, @intCast(channels))) + (8 * slices_per_frame * @as(usize, @intCast(channels)));
+}
 
-    // Helper to output pending sample bytes first
-    if (ctx.sample_bytes_pos < ctx.sample_bytes_len) {
-        const remaining = ctx.sample_bytes_len - ctx.sample_bytes_pos;
-        const take = @min(remaining, dst.len);
-        std.mem.copyForwards(u8, dst[0..take], std.mem.sliceAsBytes(ctx.samples)[ctx.sample_bytes_pos .. ctx.sample_bytes_pos + take]);
-        ctx.sample_bytes_pos += take;
-        written += take;
-        if (written == dst.len) return written;
+fn decodeNextFrame(ctx: *QoaContext) !void {
+    if (ctx.reached_eof) {
+        ctx.sample_count = 0;
+        return;
     }
 
-    // Decode next frame into samples and then spill to dst
-    while (written < dst.len) {
-        // Ensure we have at least the 8-byte frame header to know frame size
-        const header_buf = try ensureBuffered(r, 8);
-        if (header_buf.len < 8) return error.EndOfStream;
-        const frame_header = std.mem.readInt(u64, header_buf[0..8], .big);
-        const channels: u32 = @intCast((frame_header >> 56) & 0x000000FF);
-        const _sample_rate: u32 = @intCast((frame_header >> 32) & 0x00FFFFFF);
-        // sample_count present in header but not needed here
-        const frame_size: usize = @intCast(frame_header & 0x0000FFFF);
-        _ = _sample_rate;
-        if (channels != ctx.dec.channels) return error.CorruptedData;
-        // Make sure entire frame is available
-        const need = frame_size;
-        const full = try ensureBuffered(r, need);
-        if (full.len < need) return error.EndOfStream;
-
-        // Decode frame into ctx.samples
-        const result = ctx.dec.decodeFrame(full[0..need], need, ctx.samples) catch return error.CorruptedData;
-        // advance reader by frame_size by seeking forward from current position
-        const pos = ctx.stream.getPos();
-        ctx.stream.seekTo(pos + frame_size) catch |e| switch (e) {
-            error.Unseekable => return error.ReadFailed,
-            else => return error.ReadFailed,
-        };
-
-        // Prepare sample byte window
-        ctx.sample_bytes_pos = 0;
-        const total_bytes_this_frame = result.frame_length * ctx.dec.channels * @sizeOf(i16);
-        ctx.sample_bytes_len = total_bytes_this_frame;
-        // Copy as much as fits
-        const to_copy = @min(dst.len - written, ctx.sample_bytes_len);
-        const src_bytes = std.mem.sliceAsBytes(ctx.samples)[0..to_copy];
-        std.mem.copyForwards(u8, dst[written .. written + src_bytes.len], src_bytes);
-        written += src_bytes.len;
-        if (src_bytes.len < total_bytes_this_frame) {
-            // Keep remaining for next call
-            ctx.sample_bytes_pos = src_bytes.len;
-            ctx.sample_bytes_len = total_bytes_this_frame;
-            return written;
+    if (ctx.decoder.sample_count != 0) {
+        const total_frames = @as(usize, ctx.decoder.sample_count);
+        if (ctx.frames_decoded >= total_frames) {
+            ctx.sample_count = 0;
+            ctx.reached_eof = true;
+            return;
         }
     }
 
-    if (written == 0) return error.EndOfStream;
+    const header_slice = ctx.frame_buf[0..8];
+    const header_read = try readBytesExact(ctx.br, header_slice);
+    if (header_read == 0) {
+        ctx.sample_count = 0;
+        ctx.reached_eof = true;
+        return;
+    }
+    const frame_header = std.mem.readInt(u64, ctx.frame_buf[0..8], .big);
+    const channels: u32 = @intCast((frame_header >> 56) & 0x000000FF);
+    const frame_size: usize = @intCast(frame_header & 0x0000FFFF);
+
+    if (channels != ctx.decoder.channels) return error.InvalidFormat;
+    if (frame_size < 8 or frame_size > ctx.frame_buf.len) return error.InvalidFormat;
+
+    if (frame_size > ctx.frame_buf.len) return error.InvalidFormat;
+    const payload_slice = ctx.frame_buf[8..frame_size];
+    const payload_read = try readBytesExact(ctx.br, payload_slice);
+    if (payload_read < payload_slice.len) {
+        ctx.sample_count = 0;
+        ctx.reached_eof = true;
+        return;
+    }
+
+    const result = ctx.decoder.decodeFrame(ctx.frame_buf[0..frame_size], frame_size, ctx.samples) catch |err| switch (err) {
+        error.FrameTooSmall, error.InvalidFrameHeader => return error.InvalidFormat,
+        else => return err,
+    };
+
+    const channel_count = channelCount(&ctx.decoder);
+    var frames_from_result = result.frame_length;
+    if (ctx.decoder.sample_count != 0) {
+        const remaining = @as(usize, ctx.decoder.sample_count) - ctx.frames_decoded;
+        if (frames_from_result > remaining) frames_from_result = remaining;
+    }
+
+    ctx.sample_count = frames_from_result * channel_count;
+    ctx.sample_offset = 0;
+    ctx.frames_decoded += frames_from_result;
+}
+
+fn decoderRead(decoder: *format.Decoder, dst: []i16) !usize {
+    const ctx: *QoaContext = @ptrCast(@alignCast(decoder.context));
+    if (dst.len == 0) return 0;
+
+    var written: usize = 0;
+    while (written < dst.len) {
+        if (ctx.sample_offset < ctx.sample_count) {
+            const available = ctx.sample_count - ctx.sample_offset;
+            const to_copy = @min(available, dst.len - written);
+            std.mem.copyForwards(i16, dst[written .. written + to_copy], ctx.samples[ctx.sample_offset .. ctx.sample_offset + to_copy]);
+            ctx.sample_offset += to_copy;
+            written += to_copy;
+            continue;
+        }
+
+        try decodeNextFrame(ctx);
+        if (ctx.sample_count == 0) break;
+    }
+
     return written;
 }
 
-fn qoa_stream_deinit(any: *fapi.AnyStreamDecoder) void {
-    const ctx: *QoaStreamCtx = @ptrCast(@alignCast(any.context));
-    const allocator = ctx.allocator;
-    allocator.free(ctx.frame_buf);
+fn decoderDeinit(decoder: *format.Decoder) void {
+    const ctx: *QoaContext = @ptrCast(@alignCast(decoder.context));
+    const allocator = decoder.allocator;
+
+    ctx.br.deinit();
+    allocator.destroy(ctx.br);
     allocator.free(ctx.samples);
+    allocator.free(ctx.frame_buf);
     allocator.destroy(ctx);
-    allocator.destroy(any);
+    allocator.destroy(decoder);
 }
 
-const qoa_stream_vtable: fapi.StreamDecoderVTable = .{
-    .read = qoa_stream_read,
-    .deinit = qoa_stream_deinit,
+const decoder_vtable = format.DecoderVTable{
+    .read = decoderRead,
+    .deinit = decoderDeinit,
 };
 
-fn qoa_open_stream(allocator: std.mem.Allocator, stream: *io.ReadStream) api.ReadError!*fapi.AnyStreamDecoder {
-    // Peek enough to parse container header and first frame header
-    const r = stream.reader();
-    const head = r.peek(16) catch |e| switch (e) {
-        error.EndOfStream => return error.InvalidFormat,
-        else => return error.ReadFailed,
-    };
-    const hdr = decodeHeader(head) catch return error.InvalidFormat;
+fn probe(br: *BitReader) !bool {
+    const start = br.tell();
+    defer br.seekTo(start);
 
-    // Position stream at start of first frame (immediately after 8-byte file header)
-    stream.seekTo(8) catch |e| switch (e) {
-        error.Unseekable => return error.ReadFailed,
-        else => return error.ReadFailed,
-    };
-
-    // Allocate a samples buffer big enough for one full QOA frame
-    // A frame produces at most slices_per_frame * slice_len samples per channel
-    const samples_per_frame = slices_per_frame * slice_len * @as(usize, hdr.channels);
-    const samples_buf = try allocator.alloc(i16, samples_per_frame);
-
-    // Decoder state mirrors header
-    const dec = Decoder{
-        .channels = hdr.channels,
-        .sample_rate = hdr.sample_rate,
-        .sample_count = hdr.sample_count,
-    };
-
-    const ctx = try allocator.create(QoaStreamCtx);
-    ctx.* = .{
-        .allocator = allocator,
-        .stream = stream,
-        .dec = dec,
-        .frame_buf = &.{},
-        .frame_pos = 0,
-        .frame_len = 0,
-        .samples = samples_buf,
-        .sample_bytes_pos = 0,
-        .sample_bytes_len = 0,
-    };
-
-    const any = try allocator.create(fapi.AnyStreamDecoder);
-    any.* = .{
-        .vtable = &qoa_stream_vtable,
-        .context = ctx,
-        .info = .{
-            .sample_rate = hdr.sample_rate,
-            .channels = @intCast(hdr.channels),
-            .sample_type = .i16,
-            .total_frames = hdr.sample_count,
-            .duration_seconds = 0.0,
-        },
-    };
-    return any;
-}
-
-fn info_reader(stream: *io.ReadStream) api.ReadError!api.AudioInfo {
-    const r = stream.reader();
-    const header = r.peek(16) catch |e| switch (e) {
-        error.EndOfStream => return error.InvalidFormat,
-        else => return error.ReadFailed,
-    };
-    const hdr = decodeHeader(header) catch return error.InvalidFormat;
-    return .{
-        .sample_rate = hdr.sample_rate,
-        .channels = @intCast(hdr.channels),
-        .sample_type = .i16,
-        .total_frames = hdr.sample_count,
-        .duration_seconds = 0.0,
-    };
-}
-
-fn probe_reader(stream: *io.ReadStream) api.ReadError!bool {
-    const r = stream.reader();
-    const header = r.peek(16) catch |e| switch (e) {
-        error.EndOfStream => return false,
-        else => return error.ReadFailed,
-    };
-    _ = decodeHeader(header) catch return false;
+    _ = parseHeader(br) catch return false;
     return true;
 }
 
-fn qoa_decode_from_bytes(allocator: std.mem.Allocator, bytes: []const u8) api.ReadError!api.Audio {
-    const result = decode(allocator, bytes) catch |e| switch (e) {
-        error.InvalidMagicNumber, error.InvalidHeader, error.InvalidFileSize, error.InvalidSamples, error.InvalidFrameHeader, error.FrameTooSmall => return error.InvalidFormat,
-        error.OutOfMemory => return error.OutOfMemory,
-    };
-    defer allocator.free(result.samples);
+fn info(br: *BitReader) !api.AudioInfo {
+    const start = br.tell();
+    defer br.seekTo(start);
 
-    const ch: u8 = @intCast(result.decoder.channels);
-    const total_samples: usize = @as(usize, result.decoder.sample_count) * @as(usize, result.decoder.channels);
-    const total_bytes: usize = total_samples * @sizeOf(i16);
-
-    const data = try allocator.alloc(u8, total_bytes);
-    errdefer allocator.free(data);
-    const src_bytes = std.mem.sliceAsBytes(result.samples);
-    std.mem.copyForwards(u8, data, src_bytes);
+    const header = try parseHeader(br);
+    const duration = if (header.sample_rate == 0)
+        0.0
+    else
+        @as(f64, @floatFromInt(header.total_frames)) / @as(f64, @floatFromInt(header.sample_rate));
 
     return .{
-        .params = .{ .sample_rate = result.decoder.sample_rate, .channels = ch, .sample_type = .i16 },
-        .data = data,
-        .allocator = allocator,
-        .format_id = .qoa,
+        .sample_rate = header.sample_rate,
+        .channels = @intCast(header.channels),
+        .sample_type = .i16,
+        .total_frames = header.total_frames,
+        .duration_seconds = duration,
     };
 }
+
+pub fn open(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
+    const header = parseHeader(br) catch |err| {
+        br.seekTo(0);
+        return err;
+    };
+
+    br.seekTo(0);
+    _ = try readU32BE(br); // magic
+    _ = try readU32BE(br); // total frames (already validated)
+
+    const channel_count = channelCount(&Decoder{ .channels = header.channels, .sample_rate = header.sample_rate, .sample_count = @intCast(header.total_frames) });
+    const samples_per_frame = slices_per_frame * slice_len * channel_count;
+    const sample_buf = try allocator.alloc(i16, samples_per_frame);
+    errdefer allocator.free(sample_buf);
+
+    const frame_buf_len = maxFrameSize(header.channels);
+    const frame_buf = try allocator.alloc(u8, frame_buf_len);
+    errdefer allocator.free(frame_buf);
+
+    const ctx = try allocator.create(QoaContext);
+    errdefer allocator.destroy(ctx);
+
+    ctx.* = .{
+        .allocator = allocator,
+        .br = br,
+        .decoder = .{
+            .channels = header.channels,
+            .sample_rate = header.sample_rate,
+            .sample_count = @intCast(header.total_frames),
+        },
+        .samples = sample_buf,
+        .frame_buf = frame_buf,
+        .sample_offset = 0,
+        .sample_count = 0,
+        .frames_decoded = 0,
+        .reached_eof = false,
+    };
+
+    const decoder = try allocator.create(format.Decoder);
+    errdefer allocator.destroy(decoder);
+
+    const duration = if (header.sample_rate == 0)
+        0.0
+    else
+        @as(f64, @floatFromInt(header.total_frames)) / @as(f64, @floatFromInt(header.sample_rate));
+
+    decoder.* = .{
+        .vtable = &decoder_vtable,
+        .context = ctx,
+        .info = .{
+            .sample_rate = header.sample_rate,
+            .channels = @intCast(header.channels),
+            .sample_type = .i16,
+            .total_frames = header.total_frames,
+            .duration_seconds = duration,
+        },
+        .allocator = allocator,
+        .id = .qoa,
+    };
+
+    return decoder;
+}
+
+pub const vtable = format.VTable{
+    .id = .qoa,
+    .probe = probe,
+    .info = info,
+    .open = open,
+};
 
 fn writeAllConst(writer: *std.Io.Writer, src: []const u8) api.WriteError!void {
     var remaining = src;
@@ -622,7 +634,7 @@ fn readSampleI16LE(audio: *const api.Audio, sample_index: usize) i16 {
     return std.mem.readInt(i16, p, .little);
 }
 
-fn qoa_encode(writer: *std.Io.Writer, audio: *const api.Audio) api.WriteError!void {
+pub fn encode(writer: *std.Io.Writer, audio: *const api.Audio) api.WriteError!void {
     if (audio.params.sample_type != .i16) return error.UnsupportedBitDepth;
     if (audio.params.channels == 0 or audio.params.channels > max_channels) return error.UnsupportedChannelCount;
     if (audio.params.sample_rate == 0 or audio.params.sample_rate > 0x00FF_FFFF) return error.UnsupportedSampleRate;

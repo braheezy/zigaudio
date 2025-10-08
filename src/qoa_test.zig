@@ -2,24 +2,26 @@ const std = @import("std");
 const testing = std.testing;
 const api = @import("root.zig");
 const qoa = @import("qoa.zig");
-const io = @import("io.zig");
+const BitReader = @import("BitReader.zig");
 const SampleType = api.SampleType;
 
 // Embedded test QOA file
 const test_qoa_data = @embedFile("test-files/fanfare_heartcontainer.qoa");
 
 test "QOA probe" {
-    var stream = io.ReadStream.initMemory(test_qoa_data);
-    try testing.expect(try qoa.vtable.probe(&stream));
+    var br = BitReader.initFromMemory(testing.allocator, test_qoa_data);
+    defer br.deinit();
+    try testing.expect(try qoa.vtable.probe(&br));
 
-    const invalid_data = "not a qoa file";
-    stream = io.ReadStream.initMemory(invalid_data);
-    try testing.expect(!try qoa.vtable.probe(&stream));
+    var invalid_br = BitReader.initFromMemory(testing.allocator, "not a qoa file");
+    defer invalid_br.deinit();
+    try testing.expect(!try qoa.vtable.probe(&invalid_br));
 }
 
 test "QOA info" {
-    var stream = io.ReadStream.initMemory(test_qoa_data);
-    const info = try qoa.vtable.info_reader(&stream);
+    var br = BitReader.initFromMemory(testing.allocator, test_qoa_data);
+    defer br.deinit();
+    const info = try qoa.vtable.info(&br);
 
     try testing.expectEqual(@as(u32, 44100), info.sample_rate);
     try testing.expectEqual(@as(u8, 2), info.channels);
@@ -28,7 +30,7 @@ test "QOA info" {
 }
 
 test "QOA decode" {
-    var audio = try qoa.vtable.decode_from_bytes(testing.allocator, test_qoa_data);
+    var audio = try api.decodeMemory(testing.allocator, test_qoa_data);
     defer audio.deinit();
 
     try testing.expectEqual(@as(u32, 44100), audio.params.sample_rate);
@@ -42,77 +44,82 @@ test "QOA decode" {
 }
 
 test "QOA streaming API" {
-    var stream = try api.fromMemory(testing.allocator, test_qoa_data);
-    defer stream.deinit();
+    const decoder = try api.openMemory(testing.allocator, test_qoa_data);
+    defer decoder.deinit();
 
-    try testing.expectEqual(@as(u32, 44100), stream.info.sample_rate);
-    try testing.expectEqual(@as(u8, 2), stream.info.channels);
-    try testing.expectEqual(SampleType.i16, stream.info.sample_type);
-    try testing.expectEqual(@as(usize, 155127), stream.info.total_frames);
+    try testing.expectEqual(@as(u32, 44100), decoder.info.sample_rate);
+    try testing.expectEqual(@as(u8, 2), decoder.info.channels);
+    try testing.expectEqual(SampleType.i16, decoder.info.sample_type);
+    try testing.expectEqual(@as(usize, 155127), decoder.info.total_frames);
 
-    const reader = stream.readerInterface();
+    var adapter = api.DecoderReader.init(decoder);
+    const reader = adapter.reader();
     var buffer: [1024]u8 = undefined;
-    var tmp: [1][]u8 = .{&buffer};
+    var tmp: [1][]u8 = .{buffer[0..]};
     const bytes_read = try reader.readVec(&tmp);
     try testing.expect(bytes_read > 0);
 }
 
 test "QOA error handling" {
-    const invalid_data = "not a qoa file";
-    try testing.expectError(error.InvalidFormat, qoa.vtable.decode_from_bytes(testing.allocator, invalid_data));
-    try testing.expectError(error.Unsupported, api.fromMemory(testing.allocator, invalid_data));
+    var invalid_br = BitReader.initFromMemory(testing.allocator, "not a qoa file");
+    defer invalid_br.deinit();
+    try testing.expectError(error.InvalidFormat, qoa.vtable.info(&invalid_br));
+
+    try testing.expectError(error.Unsupported, api.openMemory(testing.allocator, "not a qoa file"));
+}
+
+fn decodeAll(allocator: std.mem.Allocator, data: []const u8) ![]i16 {
+    var audio = try api.decodeMemory(allocator, data);
+    defer audio.deinit();
+
+    const samples = std.mem.bytesAsSlice(i16, audio.data);
+    const copy = try allocator.alloc(i16, samples.len);
+    @memcpy(copy, samples);
+    return copy;
 }
 
 test "QOA encode from WAV decodes equal to golden" {
     const wav_bytes = @embedFile("test-files/fanfare_heartcontainer.wav");
     const golden_qoa = @embedFile("test-files/fanfare_heartcontainer.qoa");
 
-    var reader = std.Io.Reader.fixed(wav_bytes);
-    var audio = try api.decode(testing.allocator, &reader);
+    var audio = try api.decodeMemory(testing.allocator, wav_bytes);
     defer audio.deinit();
 
     const out_path = "test_out.qoa";
     defer std.fs.cwd().deleteFile(out_path) catch {};
-    try api.encodeToPath(.qoa, out_path, &audio);
+    const file = try std.fs.cwd().createFile(out_path, .{});
+    defer file.close();
+    try qoa.encodeToFile(file, &audio);
 
     const actual_bytes = try std.fs.cwd().readFileAlloc(testing.allocator, out_path, std.math.maxInt(usize));
     defer testing.allocator.free(actual_bytes);
 
-    // Decode both our encoded QOA and the golden QOA and compare PCM
-    const dec_golden = try qoa.decode(testing.allocator, golden_qoa);
-    defer testing.allocator.free(dec_golden.samples);
-    const dec_actual = try qoa.decode(testing.allocator, actual_bytes);
-    defer testing.allocator.free(dec_actual.samples);
+    const dec_golden = try decodeAll(testing.allocator, golden_qoa);
+    defer testing.allocator.free(dec_golden);
+    const dec_actual = try decodeAll(testing.allocator, actual_bytes);
+    defer testing.allocator.free(dec_actual);
 
-    try testing.expectEqual(dec_golden.decoder.channels, dec_actual.decoder.channels);
-    try testing.expectEqual(dec_golden.decoder.sample_rate, dec_actual.decoder.sample_rate);
-    try testing.expectEqual(dec_golden.decoder.sample_count, dec_actual.decoder.sample_count);
-
-    const a = dec_golden.samples;
-    const b = dec_actual.samples;
-    var max_abs_diff: i32 = 0;
+    try testing.expectEqual(dec_golden.len, dec_actual.len);
     var i: usize = 0;
-    while (i < a.len and i < b.len) : (i += 1) {
-        const da: i32 = a[i];
-        const db: i32 = b[i];
-        const d: i32 = if (da > db) da - db else db - da;
-        if (d > max_abs_diff) max_abs_diff = d;
+    while (i < dec_golden.len) : (i += 1) {
+        const da = dec_golden[i];
+        const db = dec_actual[i];
+        try testing.expect(@abs(da - db) <= 1024);
     }
-    // Allow small per-sample deviation due to encoder heuristics
-    try testing.expect(max_abs_diff <= 1024);
 }
 
 test "QOA encode from WAV matches golden bytes" {
     const wav_bytes = @embedFile("test-files/fanfare_heartcontainer.wav");
     const golden_qoa = @embedFile("test-files/fanfare_heartcontainer.qoa");
 
-    var reader = std.Io.Reader.fixed(wav_bytes);
-    var audio = try api.decode(testing.allocator, &reader);
+    var audio = try api.decodeMemory(testing.allocator, wav_bytes);
     defer audio.deinit();
 
     const out_path = "test_out_exact.qoa";
     defer std.fs.cwd().deleteFile(out_path) catch {};
-    try api.encodeToPath(.qoa, out_path, &audio);
+    const file = try std.fs.cwd().createFile(out_path, .{});
+    defer file.close();
+    try qoa.encodeToFile(file, &audio);
 
     const actual_bytes = try std.fs.cwd().readFileAlloc(testing.allocator, out_path, std.math.maxInt(usize));
     defer testing.allocator.free(actual_bytes);

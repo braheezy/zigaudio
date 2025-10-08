@@ -17,44 +17,32 @@ pub fn main() !void {
         _ = debug_allocator.deinit();
     };
 
-    if (builtin.os.tag != .windows) {
-        const action = std.posix.Sigaction{
-            .handler = .{ .handler = handleSigInt },
-            .mask = std.posix.sigemptyset(),
-            .flags = 0,
-        };
-        std.posix.sigaction(std.posix.SIG.INT, &action, null);
-        std.posix.sigaction(std.posix.SIG.TERM, &action, null);
-        std.posix.sigaction(std.posix.SIG.USR1, &action, null);
-    }
-
     var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
 
     // pop program name
     _ = args.next();
 
-    var play_from_memory: bool = false;
     var full_decode_first: bool = false;
     var audio_path: ?[]const u8 = null;
     while (args.next()) |arg| {
-        if (std.mem.eql(u8, arg, "--mem")) {
-            play_from_memory = true;
-        } else if (std.mem.eql(u8, arg, "--full")) {
+        if (std.mem.eql(u8, arg, "--full")) {
             full_decode_first = true;
         } else if (audio_path == null) {
             audio_path = arg;
         }
     }
-    // const embedded: []const u8 = @embedFile("fanfare_heartcontainer.qoa");
-    if (!play_from_memory and audio_path == null) {
-        std.debug.print("usage: player [--mem] [--full] <path>\n", .{});
-        std.debug.print("  --mem  : play embedded audio from memory\n", .{});
+    if (audio_path == null) {
+        std.debug.print("usage: player [--full] <path>\n", .{});
         std.debug.print("  --full : decode entire file to memory first\n", .{});
         return;
     }
 
-    if (full_decode_first and !play_from_memory) {
+    var stdin_buffer: [256]u8 = undefined;
+    var stdin_reader = std.fs.File.stdin().reader(&stdin_buffer);
+    const stdin = &stdin_reader.interface;
+
+    if (full_decode_first) {
         const path = audio_path.?;
         std.debug.print("Performing full decode\n", .{});
 
@@ -158,15 +146,22 @@ pub fn main() !void {
     std.debug.print("Starting playback...\n", .{});
     try player.play();
 
-    while (player.isPlaying()) {
+    var quit_requested = false;
+
+    while (player.isPlaying() and !quit_requested) {
         std.Thread.sleep(std.time.ns_per_ms * 25);
+        const maybe_key = stdin.peek(1) catch null;
+        if (maybe_key) |key| {
+            if (key[0] == 'q') {
+                quit_requested = true;
+                break;
+            }
+        }
     }
 
-    std.debug.print("Playback finished.\n", .{});
-}
-
-fn handleSigInt(sig_num: c_int) callconv(.c) void {
-    _ = sig_num;
-    std.debug.print("\rBye!\n", .{});
-    std.process.exit(0);
+    if (quit_requested) {
+        std.debug.print("Playback stopped by user.\n", .{});
+    } else {
+        std.debug.print("Playback finished.\n", .{});
+    }
 }

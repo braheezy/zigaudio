@@ -186,9 +186,16 @@ pub const DecoderReader = struct {
             const n = self.decoder.read(samples) catch |e| switch (e) {
                 else => return error.ReadFailed,
             };
+            if (n == 0) {
+                if (total == 0) return error.EndOfStream;
+                break;
+            }
+
             total += n * @sizeOf(i16);
-            if (n < samples.len) break; // EOF
+            if (n < samples.len) break; // EOF after partial read
         }
+
+        if (total == 0) return error.EndOfStream;
         return total;
     }
 
@@ -227,11 +234,7 @@ pub fn openFile(allocator: std.mem.Allocator, path: []const u8) !*Decoder {
     br.* = try BitReader.initFromFile(allocator, path);
     errdefer br.deinit();
 
-    return format.openDecoder(allocator, br) catch |err| {
-        br.deinit();
-        allocator.destroy(br);
-        return err;
-    };
+    return try format.openDecoder(allocator, br);
 }
 
 /// Open decoder from memory buffer
@@ -240,11 +243,9 @@ pub fn openMemory(allocator: std.mem.Allocator, data: []const u8) !*Decoder {
     errdefer allocator.destroy(br);
 
     br.* = BitReader.initFromMemory(allocator, data);
+    errdefer br.deinit();
 
-    return format.openDecoder(allocator, br) catch |err| {
-        allocator.destroy(br);
-        return err;
-    };
+    return try format.openDecoder(allocator, br);
 }
 
 /// Probe file format without opening decoder
@@ -347,7 +348,7 @@ pub fn decodeMemory(allocator: std.mem.Allocator, data: []const u8) !Audio {
 
 test {
     @import("std").testing.refAllDecls(@This());
-    // _ = @import("qoa_test.zig");
+    _ = @import("qoa_test.zig");
     _ = @import("wav_test.zig");
     // _ = @import("vorbis_test.zig");
     // _ = @import("mp3/tests.zig");
