@@ -169,11 +169,25 @@ pub const FrameHeader = struct {
         const bitrate_val = self.bitrate() orelse return null;
         const freq_val = self.samplingFrequencyValue() orelse return null;
 
-        const samples_per_frame: u16 = if (self.layer() == .v1) 384 else 1152;
+        const samples_per_frame: u16 = 1152;
         const padding = self.paddingBit();
 
         const frame_size = ((samples_per_frame * bitrate_val) / (8 * freq_val)) + padding;
-        return if (self.lowSamplingFrequency()) frame_size / 2 else frame_size;
+        return if (self.layer() == .v1)
+            frame_size * 4 // Layer I has 4 bytes per slot
+        else if (self.layer() == .v2)
+            frame_size
+        else
+            frame_size;
+    }
+
+    pub fn framePayloadBits(self: FrameHeader) !usize {
+        const bitrate_val = self.bitrate() orelse return error.InvalidFormat;
+        const freq_val = self.samplingFrequencyValue() orelse return error.InvalidFormat;
+        const samples_per_frame: u32 = 1152;
+        const padding = self.paddingBit();
+        const slots = (samples_per_frame * bitrate_val) / (freq_val * 8) + padding;
+        return slots * 8;
     }
 };
 

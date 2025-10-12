@@ -411,6 +411,19 @@ pub fn readFull(
     return .{ .main_data = md, .bits = m };
 }
 
+fn readExact(reader: *std.Io.Reader, dest: []u8) !void {
+    var remaining = dest.len;
+    var offset: usize = 0;
+    while (remaining > 0) {
+        const chunk = try reader.peek(remaining);
+        if (chunk.len == 0) return error.EndOfStream;
+        @memcpy(dest[offset .. offset + chunk.len], chunk);
+        reader.toss(chunk.len);
+        offset += chunk.len;
+        remaining -= chunk.len;
+    }
+}
+
 // Private function to read main data with reservoir handling
 fn read(
     allocator: std.mem.Allocator,
@@ -431,10 +444,11 @@ fn read(
         const buf = try allocator.alloc(u8, size);
         defer allocator.free(buf);
 
-        try source.readSliceAll(buf);
+        try readExact(source, buf);
 
         // TODO: Define a special error and enable to continue the next frame.
         var new_vec = std.array_list.Managed(u8).init(allocator);
+        errdefer new_vec.deinit();
         new_vec.appendSlice(prev.?.vec.items) catch return error.OutOfMemory;
         new_vec.appendSlice(buf) catch return error.OutOfMemory;
         return bits.Bits{ .vec = new_vec };
@@ -442,6 +456,7 @@ fn read(
 
     // Copy data from previous frames
     var vec = std.array_list.Managed(u8).init(allocator);
+    errdefer vec.deinit();
 
     if (prev != null) {
         const tail_data = prev.?.tail(offset);
@@ -452,9 +467,10 @@ fn read(
     const buf = try allocator.alloc(u8, size);
     defer allocator.free(buf);
 
-    try source.readSliceAll(buf);
+    try readExact(source, buf);
 
     vec.appendSlice(buf) catch return error.OutOfMemory;
+
     return bits.Bits{ .vec = vec };
 }
 

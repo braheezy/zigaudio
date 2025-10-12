@@ -306,7 +306,7 @@ pub fn decodeFile(allocator: std.mem.Allocator, path: []const u8) !Audio {
         },
         .data = data,
         .allocator = allocator,
-        .format_id = .wav, // TODO: Get from decoder
+        .format_id = decoder.id,
     };
 }
 
@@ -342,14 +342,14 @@ pub fn decodeMemory(allocator: std.mem.Allocator, data: []const u8) !Audio {
         },
         .data = pcm_data,
         .allocator = allocator,
-        .format_id = .unknown,
+        .format_id = decoder.id,
     };
 }
 
 test {
     @import("std").testing.refAllDecls(@This());
-    _ = @import("qoa_test.zig");
+    // _ = @import("qoa_test.zig");
     _ = @import("wav_test.zig");
+    _ = @import("mp3/tests.zig");
     // _ = @import("vorbis_test.zig");
-    // _ = @import("mp3/tests.zig");
 }

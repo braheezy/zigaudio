@@ -13,7 +13,7 @@ pub const SideInfo = struct {
     part2_3_length: [2][2]u12 = undefined, // 12 bits
     big_values: [2][2]u9 = undefined, // 9 bits
     global_gain: [2][2]u8 = undefined, // 8 bits
-    scalefac_compress: [2][2]u4 = undefined, // 4 bits
+    scalefac_compress: [2][2]u16 = undefined, // up to 9 bits
     win_switch_flag: [2][2]u1 = undefined, // 1 bit
 
     block_type: [2][2]u2 = undefined, // 2 bits

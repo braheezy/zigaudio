@@ -1,9 +1,35 @@
 const std = @import("std");
+const testing = std.testing;
 const mp3 = @import("../mp3.zig");
-const zigaudio = @import("../root.zig");
+const api = @import("../root.zig");
+const BitReader = @import("../BitReader.zig");
+const SampleType = api.SampleType;
+
+const test_mp3_data = @embedFile("../test-files/fanfare_heartcontainer.mp3");
+
+fn makeReader() BitReader {
+    return BitReader.initFromMemory(testing.allocator, test_mp3_data);
+}
+
+fn makeInvalidReader() BitReader {
+    return BitReader.initFromMemory(testing.allocator, "not an mp3");
+}
+
+fn destroyBitReader(br_ptr: *BitReader) void {
+    br_ptr.deinit();
+    testing.allocator.destroy(br_ptr);
+}
+
+fn makeReaderPtr() !*BitReader {
+    var br_ptr = try testing.allocator.create(BitReader);
+    errdefer testing.allocator.destroy(br_ptr);
+    br_ptr.* = BitReader.initFromMemory(testing.allocator, test_mp3_data);
+    errdefer br_ptr.deinit();
+    return br_ptr;
+}
 
 test {
-    @import("std").testing.refAllDecls(@This());
+    testing.refAllDecls(@This());
     _ = @import("frameheader.zig");
     _ = @import("bits.zig");
     _ = @import("imdct.zig");
@@ -11,40 +37,70 @@ test {
     _ = @import("maindata.zig");
 }
 
-test "MP3 decode from embedded file" {
-    const embedded_mp3 = @embedFile("../test-files/fanfare_heartcontainer.mp3");
+test "MP3 probe" {
+    var br = makeReader();
+    defer br.deinit();
+    try testing.expect(try mp3.vtable.probe(&br));
 
-    var audio = try zigaudio.decodeMemory(std.testing.allocator, embedded_mp3);
+    var invalid = makeInvalidReader();
+    defer invalid.deinit();
+    try testing.expect(!try mp3.vtable.probe(&invalid));
+}
+
+test "MP3 info" {
+    var br = makeReader();
+    defer br.deinit();
+    const info = try mp3.vtable.info(&br);
+
+    try testing.expectEqual(@as(u32, 44100), info.sample_rate);
+    try testing.expectEqual(@as(u8, 2), info.channels);
+    try testing.expectEqual(SampleType.i16, info.sample_type);
+    try testing.expect(info.total_frames > 0);
+}
+
+test "MP3 open + streaming" {
+    const allocator = testing.allocator;
+    const br_ptr = try makeReaderPtr();
+    const decoder = mp3.vtable.open(allocator, br_ptr) catch |err| {
+        destroyBitReader(br_ptr);
+        return err;
+    };
+    defer decoder.deinit();
+
+    try testing.expectEqual(@as(u32, 44100), decoder.info.sample_rate);
+    try testing.expectEqual(@as(u8, 2), decoder.info.channels);
+    try testing.expectEqual(SampleType.i16, decoder.info.sample_type);
+    try testing.expect(decoder.info.total_frames > 0);
+
+    var buf: [2048]i16 = undefined;
+    const read = try decoder.read(&buf);
+    try testing.expect(read > 0);
+}
+
+test "MP3 decodeMemory" {
+    var audio = try api.decodeMemory(testing.allocator, test_mp3_data);
     defer audio.deinit();
 
-    // Verify basic audio properties
-    try std.testing.expect(audio.params.sample_rate > 0);
-    try std.testing.expect(audio.params.channels > 0);
-    try std.testing.expect(audio.params.channels <= 2);
-    try std.testing.expectEqual(zigaudio.SampleType.i16, audio.params.sample_type);
-    try std.testing.expect(audio.data.len > 0);
+    try testing.expectEqual(@as(u32, 44100), audio.params.sample_rate);
+    try testing.expectEqual(@as(u8, 2), audio.params.channels);
+    try testing.expectEqual(SampleType.i16, audio.params.sample_type);
+    try testing.expect(audio.data.len > 0);
 
-    // Verify we have reasonable audio data
-    try std.testing.expect(audio.data.len >= 1000); // At least some data
+    const frame_size = audio.params.channels * @sizeOf(i16);
+    try testing.expect(audio.data.len % frame_size == 0);
+}
 
-    // Check that we have actual audio data (not all zeros)
-    const samples = std.mem.bytesAsSlice(i16, audio.data);
-    var non_zero_count: usize = 0;
-    const check_range = @min(samples.len, 10000); // Check more samples
-    for (samples[0..check_range]) |sample| {
-        if (sample != 0) non_zero_count += 1;
-    }
+test "MP3 info invalid" {
+    var br = makeInvalidReader();
+    defer br.deinit();
+    try testing.expectError(error.InvalidFormat, mp3.vtable.info(&br));
+}
 
-    // MP3 files often start with silence, so we allow for some initial zeros
-    // but require at least some non-zero samples in a reasonable range
-    if (non_zero_count == 0) {
-        std.debug.print("Warning: No non-zero samples found in first {d} samples\n", .{check_range});
-        std.debug.print("Audio data length: {d} bytes, {d} samples\n", .{ audio.data.len, samples.len });
-        std.debug.print("Sample rate: {d}, channels: {d}\n", .{ audio.params.sample_rate, audio.params.channels });
-        // Don't fail the test, as the decoder might be working but the file has long silence
-    }
-
-    // Verify the data size is a multiple of frame size (channels * 2 bytes per sample)
-    const frame_size = audio.params.channels * 2;
-    try std.testing.expect(audio.data.len % frame_size == 0);
+test "MP3 open invalid" {
+    const allocator = testing.allocator;
+    const br_ptr = try allocator.create(BitReader);
+    br_ptr.* = BitReader.initFromMemory(testing.allocator, "not an mp3");
+    defer destroyBitReader(br_ptr);
+    const open_err = mp3.vtable.open(allocator, br_ptr);
+    try testing.expectError(error.InvalidFormat, open_err);
 }

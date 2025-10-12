@@ -1,410 +1,422 @@
 const std = @import("std");
 const api = @import("root.zig");
 const format = @import("formats.zig");
-const io = @import("io.zig");
+const BitReader = @import("BitReader.zig");
 const frameheader = @import("mp3/frameheader.zig");
 const frame_mod = @import("mp3/frame.zig");
 const mp3_bits = @import("mp3/bits.zig");
+
+const ArrayList = std.ArrayList;
+const mem = std.mem;
+const math = std.math;
+
+const samples_per_frame: u64 = 1152;
+const max_sync_scan_attempts: usize = 100_000;
 
 const Mp3Info = struct {
     sample_rate: u32,
     channels: u8,
     total_frames: usize,
-    total_samples: u64, // Total PCM samples (frames * 1152)
+    total_samples: u64,
     duration_seconds: f64,
 };
 
-/// Count MP3 frames by parsing through the file
-fn countFrames(stream: *io.ReadStream) api.ReadError!Mp3Info {
-    const saved_pos = stream.getPos();
-    defer stream.seekTo(saved_pos) catch {};
-
-    skip_id3v2(stream) catch {};
-
-    const r = stream.reader();
-    const first_res = frameheader.readFrameHeader(r) catch return error.InvalidFormat;
-    const first_header = first_res.header;
-    const sr = first_header.samplingFrequencyValue() orelse return error.InvalidFormat;
-    const ch = first_header.numberOfChannels();
-
-    // Reset to start of first frame
-    stream.seekTo(stream.getPos() - 4) catch return error.ReadFailed;
-
-    const end_pos = stream.getEndPos() catch return error.ReadFailed;
-    var total_frames: usize = 0;
-    var scan_attempts: usize = 0;
-    const max_scan_attempts: usize = 100000; // Safety limit
-
-    while (stream.getPos() < end_pos and scan_attempts < max_scan_attempts) : (scan_attempts += 1) {
-        const frame_start = stream.getPos();
-        const frame_reader = stream.reader();
-
-        const hdr_res = frameheader.readFrameHeader(frame_reader) catch |e| switch (e) {
-            error.EndOfStream => break,
-            else => {
-                // Skip one byte and try again
-                const new_pos = frame_start + 1;
-                if (new_pos >= end_pos) break;
-                stream.seekTo(new_pos) catch return error.ReadFailed;
-                continue;
-            },
+fn skipBits(br: *BitReader, bits: usize) !void {
+    var remaining_bits = bits;
+    while (remaining_bits > 0) {
+        const chunk_bits = @min(remaining_bits, 0x1000 * 8);
+        const enough = br.has(chunk_bits) catch |err| switch (err) {
+            error.EndOfStream => false,
+            else => return err,
         };
+        if (!enough) return error.InvalidFormat;
 
-        const frame_size = hdr_res.header.frameSize() orelse {
-            // Skip one byte and try again
-            const new_pos = frame_start + 1;
-            if (new_pos >= end_pos) break;
-            stream.seekTo(new_pos) catch return error.ReadFailed;
-            continue;
-        };
-
-        // Validate this is a consistent frame
-        if (hdr_res.header.samplingFrequencyValue() != sr or
-            hdr_res.header.numberOfChannels() != ch)
-        {
-            // Skip one byte and try again
-            const new_pos = frame_start + 1;
-            if (new_pos >= end_pos) break;
-            stream.seekTo(new_pos) catch return error.ReadFailed;
-            continue;
-        }
-
-        total_frames += 1;
-        const next_pos = frame_start + frame_size;
-        if (next_pos >= end_pos) break;
-        stream.seekTo(next_pos) catch return error.ReadFailed;
+        br.skip(chunk_bits);
+        remaining_bits -= chunk_bits;
     }
-
-    // Each MP3 frame contains 1152 PCM samples
-    const samples_per_frame: u64 = 1152;
-    const total_samples = total_frames * samples_per_frame;
-    const duration = @as(f64, @floatFromInt(total_samples)) / @as(f64, @floatFromInt(sr));
-
-    return Mp3Info{
-        .sample_rate = sr,
-        .channels = ch,
-        .total_frames = total_frames,
-        .total_samples = total_samples,
-        .duration_seconds = duration,
-    };
 }
 
-fn skip_id3v2(stream: *io.ReadStream) api.ReadError!void {
-    const r = stream.reader();
-    const start = stream.getPos();
-    const hdr = r.peek(10) catch |e| switch (e) {
-        error.EndOfStream => return,
-        else => return error.ReadFailed,
-    };
-    if (hdr.len < 10) return;
-    if (!(hdr[0] == 'I' and hdr[1] == 'D' and hdr[2] == '3')) return;
-    const version_major = hdr[3];
-    const flags = hdr[5];
-    // Syncsafe size
-    const sz0: usize = @intCast(hdr[6] & 0x7F);
-    const sz1: usize = @intCast(hdr[7] & 0x7F);
-    const sz2: usize = @intCast(hdr[8] & 0x7F);
-    const sz3: usize = @intCast(hdr[9] & 0x7F);
+fn skipBytes(br: *BitReader, bytes: usize) !void {
+    const bits = math.mul(usize, bytes, 8) catch return error.InvalidFormat;
+    try skipBits(br, bits);
+}
+
+inline fn skipOneByte(br: *BitReader) !void {
+    try skipBits(br, 8);
+}
+
+fn skipId3(br: *BitReader) !void {
+    br.alignToByte();
+    if (!try br.has(80)) return;
+
+    const peek = br.reader.peek(10) catch return;
+    if (!(peek[0] == 'I' and peek[1] == 'D' and peek[2] == '3')) return;
+
+    const version_major = peek[3];
+    const flags = peek[5];
+    const sz0: usize = @intCast(peek[6] & 0x7F);
+    const sz1: usize = @intCast(peek[7] & 0x7F);
+    const sz2: usize = @intCast(peek[8] & 0x7F);
+    const sz3: usize = @intCast(peek[9] & 0x7F);
     const tag_size: usize = (sz0 << 21) | (sz1 << 14) | (sz2 << 7) | sz3;
+
+    std.debug.print("[mp3] ID3 tag detected: version={d} size={d} flags=0x{x} pos={d}\n", .{ version_major, tag_size, flags, br.tell() });
+
     var total_skip: usize = 10 + tag_size;
-    // ID3v2.4 footer flag (bit 4)
     if (version_major == 4 and (flags & 0x10) != 0) total_skip += 10;
-    const new_pos = start + total_skip;
-    stream.seekTo(@intCast(new_pos)) catch return error.ReadFailed;
+
+    if (br.file) |*file| {
+        file.seekBy(@intCast(total_skip)) catch return error.InvalidFormat;
+        br.reader.seek = 0;
+        br.reader.end = 0;
+        br.bit_index = 0;
+        br.reader.fillMore() catch |err| switch (err) {
+            error.EndOfStream => return error.InvalidFormat,
+            else => return err,
+        };
+    } else {
+        try skipBytes(br, total_skip);
+    }
 }
 
-/// Probe function to detect MP3 format
-pub fn probe(stream: *io.ReadStream) api.ReadError!bool {
-    const saved = stream.getPos();
-    defer stream.seekTo(saved) catch {};
-    skip_id3v2(stream) catch {};
-    const r = stream.reader();
-    _ = frameheader.readFrameHeader(r) catch return false;
-    return true;
+fn absoluteBytePosition(br: *BitReader) !usize {
+    if (br.file) |*file| {
+        const pos = try file.getPos();
+        const buffered = br.reader.end - br.reader.seek;
+        const buffered_u64: u64 = @intCast(buffered);
+        if (pos < buffered_u64) return error.InvalidFormat;
+        return @intCast(pos - buffered_u64);
+    }
+    return br.tell();
 }
 
-/// Read audio info from MP3 stream
-pub fn info_reader(stream: *io.ReadStream) api.ReadError!api.AudioInfo {
-    const mp3_info = try countFrames(stream);
-    return .{ .sample_rate = mp3_info.sample_rate, .channels = mp3_info.channels, .sample_type = .i16, .total_frames = mp3_info.total_frames, .duration_seconds = mp3_info.duration_seconds };
-}
-
-const Mp3StreamCtx = struct {
-    allocator: std.mem.Allocator,
-    stream: *io.ReadStream,
-    prev_bits: ?mp3_bits.Bits = null,
-    // overlap-add state across frames
-    store: [2][32][18]f32 = std.mem.zeroes([2][32][18]f32),
-    v_vec: [2][1024]f32 = std.mem.zeroes([2][1024]f32),
+const ScanResult = struct {
+    info: Mp3Info,
+    first_frame: usize,
 };
 
-/// Stream decoder read function
-fn mp3_stream_read(decoder: *format.AnyStreamDecoder, dst: []u8) api.ReadError!usize {
-    const ctx: *Mp3StreamCtx = @ptrCast(@alignCast(decoder.context));
+const scan_buffer_limit: usize = 512 * 1024;
+
+fn scanMp3Mutable(br: *BitReader) !ScanResult {
+    try skipId3(br);
+
+    var sr: ?u32 = null;
+    var ch: ?u8 = null;
+    var first_frame: ?usize = null;
+    var total_frames: usize = 0;
+    var scanned_bytes: usize = 0;
+
+    while (scanned_bytes < max_sync_scan_attempts) {
+        const has_enough = br.has(32) catch |err| switch (err) {
+            error.EndOfStream => false,
+            else => return err,
+        };
+        if (!has_enough) break;
+
+        br.alignToByte();
+        const probe_start = try absoluteBytePosition(br);
+
+        const hdr_res = frameheader.readFrameHeader(&br.reader) catch {
+            try skipOneByte(br);
+            scanned_bytes += 1;
+            continue;
+        };
+
+        const header_pos = try absoluteBytePosition(br);
+        if (header_pos < probe_start) return error.InvalidFormat;
+        scanned_bytes += header_pos - probe_start;
+
+        const header = hdr_res.header;
+        const frame_sr = header.samplingFrequencyValue() orelse {
+            try skipOneByte(br);
+            scanned_bytes += 1;
+            continue;
+        };
+        const frame_ch = header.numberOfChannels();
+
+        if (sr) |fixed_sr| {
+            if (frame_sr != fixed_sr or frame_ch != ch.?) {
+            try skipOneByte(br);
+            scanned_bytes += 1;
+            continue;
+        }
+        } else {
+            sr = frame_sr;
+            ch = frame_ch;
+            first_frame = header_pos;
+        }
+
+        const frame_size = header.frameSize() orelse {
+            try skipOneByte(br);
+            scanned_bytes += 1;
+            continue;
+        };
+        if (frame_size < 4) {
+            try skipOneByte(br);
+            scanned_bytes += 1;
+            continue;
+        }
+
+        try skipBytes(br, frame_size);
+
+        const after_frame = try absoluteBytePosition(br);
+        if (after_frame <= header_pos) return error.InvalidFormat;
+        scanned_bytes += after_frame - header_pos;
+        total_frames += 1;
+    }
+
+    if (sr == null or ch == null or total_frames == 0 or first_frame == null) {
+        return error.InvalidFormat;
+    }
+
+    const sample_rate = sr.?;
+    const channels = ch.?;
+    const total_samples = @as(u64, total_frames) * samples_per_frame;
+    const scan_info = Mp3Info{
+        .sample_rate = sample_rate,
+        .channels = channels,
+        .total_frames = total_frames,
+        .total_samples = total_samples,
+        .duration_seconds = if (sample_rate != 0)
+            @as(f64, @floatFromInt(total_samples)) / @as(f64, @floatFromInt(sample_rate))
+        else
+            0.0,
+    };
+
+    return ScanResult{ .info = scan_info, .first_frame = first_frame.? };
+}
+
+fn scanWithClone(br: *BitReader) !ScanResult {
+    if (br.file) |*file| {
+        const saved_pos = try file.getPos();
+        defer file.seekTo(saved_pos) catch {};
+
+        const total_size = br.totalSize() orelse return error.InvalidFormat;
+        const read_len = @min(total_size, scan_buffer_limit);
+        var buffer = try br.allocator.alloc(u8, read_len);
+        defer br.allocator.free(buffer);
+
+        try file.seekTo(0);
+        var filled: usize = 0;
+        while (filled < read_len) {
+            const amt = try file.read(buffer[filled..read_len]);
+            if (amt == 0) break;
+            filled += amt;
+        }
+        if (filled == 0) return error.InvalidFormat;
+
+        var mem_br = BitReader.initFromMemory(br.allocator, buffer[0..filled]);
+        defer mem_br.deinit();
+        return scanMp3Mutable(&mem_br);
+    }
+
+    var clone = try br.clone(br.allocator);
+    defer BitReader.deinitClone(&clone);
+    return scanMp3Mutable(&clone);
+}
+
+fn countFrames(br: *BitReader) !Mp3Info {
+    if (br.file != null) {
+        return (try scanWithClone(br)).info;
+    }
+    return (try scanMp3Mutable(br)).info;
+}
+
+pub fn probe(br: *BitReader) !bool {
+    const meta = countFrames(br) catch return false;
+    return meta.total_frames > 0;
+}
+
+fn info(br: *BitReader) !api.AudioInfo {
+    const meta = try countFrames(br);
+    return .{
+        .sample_rate = meta.sample_rate,
+        .channels = meta.channels,
+        .sample_type = .i16,
+        .total_frames = meta.total_frames,
+        .duration_seconds = meta.duration_seconds,
+    };
+}
+
+const Mp3Decoder = struct {
+    allocator: std.mem.Allocator,
+    br: *BitReader,
+    prev_bits: ?mp3_bits.Bits = null,
+    store: [2][32][18]f32 = std.mem.zeroes([2][32][18]f32),
+    v_vec: [2][1024]f32 = std.mem.zeroes([2][1024]f32),
+    pending: std.ArrayList(u8) = std.ArrayList(u8).empty,
+    sample_rate: u32,
+    channels: u8,
+    total_frames: usize,
+    frames_decoded: usize = 0,
+    finished: bool = false,
+};
+
+fn drainPending(ctx: *Mp3Decoder, dst: []i16) usize {
+    if (dst.len == 0) return 0;
+    const available_samples = ctx.pending.items.len / 2;
+    if (available_samples == 0) return 0;
+
+    const to_copy = @min(available_samples, dst.len);
+    var i: usize = 0;
+    while (i < to_copy) : (i += 1) {
+        const base = i * 2;
+        const b0: u16 = ctx.pending.items[base];
+        const b1: u16 = ctx.pending.items[base + 1];
+        const combined: u16 = b0 | (b1 << 8);
+        dst[i] = @as(i16, @bitCast(combined));
+    }
+
+    const consumed_bytes = to_copy * 2;
+    const remaining = ctx.pending.items.len - consumed_bytes;
+    if (remaining == 0) {
+        ctx.pending.clearRetainingCapacity();
+    } else {
+        const ptr = ctx.pending.items.ptr;
+        mem.copyForwards(u8, ptr[0..remaining], ptr[consumed_bytes .. consumed_bytes + remaining]);
+        ctx.pending.items = ptr[0..remaining];
+    }
+    return to_copy;
+}
+
+fn decoderRead(decoder: *format.Decoder, dst: []i16) !usize {
+    const ctx: *Mp3Decoder = @ptrCast(@alignCast(decoder.context));
     if (dst.len == 0) return 0;
 
-    var attempts: usize = 0;
-    const max_attempts: usize = 1_000_000; // safety cap for damaged files
+    var written: usize = drainPending(ctx, dst);
+    if (written == dst.len) return written;
+    if (ctx.finished) return written;
 
-    while (attempts < max_attempts) : (attempts += 1) {
-        // Try to assemble a frame
-        var f: frame_mod.Frame = undefined;
-        const pos_before = ctx.stream.getPos();
-        const r0 = ctx.stream.reader();
-        f = frame_mod.decodeFrame(ctx.allocator, r0, if (ctx.prev_bits) |*p| p else null) catch |e| switch (e) {
-            error.EndOfStream => return error.EndOfStream,
+    var attempts: usize = 0;
+
+    while (written < dst.len and attempts < max_sync_scan_attempts) : (attempts += 1) {
+        const frame_start_abs = try absoluteBytePosition(ctx.br);
+        ctx.br.alignToByte();
+
+        var frame = frame_mod.decodeFrame(ctx.allocator, &ctx.br.reader, if (ctx.prev_bits) |*p| p else null) catch |err| switch (err) {
+            error.EndOfStream => {
+                ctx.finished = true;
+                break;
+            },
             else => {
-                // Resync on any error: advance one byte and retry
-                const end = ctx.stream.getEndPos() catch 0;
-                if (end != 0 and pos_before + 1 >= end) return error.EndOfStream;
-                ctx.stream.seekTo(pos_before + 1) catch return error.ReadFailed;
+                const total_size = ctx.br.totalSize();
+                const new_pos = frame_start_abs + 1;
+                if (total_size != null and new_pos >= total_size.?) {
+                    ctx.finished = true;
+                    break;
+                }
+                ctx.br.seekTo(new_pos);
                 continue;
             },
         };
 
-        // Drop previous reservoir now that a frame was assembled
-        if (ctx.prev_bits) |*ob| {
-            ob.vec.deinit();
-            ctx.prev_bits = null;
-        }
+        if (ctx.prev_bits) |*pb| pb.vec.deinit();
+        ctx.prev_bits = null;
 
-        // Carry overlap-add state into frame
-        f.store = ctx.store;
-        f.v_vec = ctx.v_vec;
+        frame.store = ctx.store;
+        frame.v_vec = ctx.v_vec;
 
-        const pcm = f.decode(ctx.allocator) catch {
-            // On synthesis failure, resync and retry
-            f.deinit();
-            const end = ctx.stream.getEndPos() catch 0;
-            if (end != 0 and pos_before + 1 >= end) return error.EndOfStream;
-            ctx.stream.seekTo(pos_before + 1) catch return error.ReadFailed;
+        const pcm = frame.decode(ctx.allocator) catch {
+            frame.deinit();
+            const total_size = ctx.br.totalSize();
+            const new_pos = frame_start_abs + 1;
+            if (total_size != null and new_pos >= total_size.?) {
+                ctx.finished = true;
+                break;
+            }
+            ctx.br.seekTo(new_pos);
             continue;
         };
 
-        // Persist updated overlap state
-        ctx.store = f.store;
-        ctx.v_vec = f.v_vec;
+        ctx.store = frame.store;
+        ctx.v_vec = frame.v_vec;
 
-        // Transfer reservoir ownership to ctx; prevent double free
-        ctx.prev_bits = f.main_data_bits;
-        f.main_data_bits.vec = std.array_list.Managed(u8).init(ctx.allocator);
-        f.deinit();
+        ctx.prev_bits = frame.main_data_bits;
+        frame.main_data_bits.vec = std.array_list.Managed(u8).init(ctx.allocator);
+        frame.deinit();
 
-        const n = @min(dst.len, pcm.len);
-        std.mem.copyForwards(u8, dst[0..n], pcm[0..n]);
+        try ctx.pending.appendSlice(ctx.allocator, pcm);
         ctx.allocator.free(pcm);
-        return n;
+
+        ctx.frames_decoded += 1;
+        written += drainPending(ctx, dst[written..]);
+        if (written == dst.len) break;
     }
 
-    std.debug.print("mp3(stream): giving up after {d} attempts\n", .{max_attempts});
-    return error.ReadFailed;
+    if (written == 0 and attempts >= max_sync_scan_attempts) return error.CorruptedData;
+    return written;
 }
 
-/// Stream decoder deinit function
-fn mp3_stream_deinit(decoder: *format.AnyStreamDecoder) void {
-    const ctx: *Mp3StreamCtx = @ptrCast(@alignCast(decoder.context));
-    const allocator = ctx.allocator;
+fn decoderDeinit(decoder: *format.Decoder) void {
+    const ctx: *Mp3Decoder = @ptrCast(@alignCast(decoder.context));
     if (ctx.prev_bits) |*b| b.vec.deinit();
+    ctx.pending.deinit(ctx.allocator);
+    ctx.br.deinit();
+    const allocator = decoder.allocator;
+    allocator.destroy(ctx.br);
     allocator.destroy(ctx);
     allocator.destroy(decoder);
 }
 
-const mp3_stream_vtable = format.StreamDecoderVTable{
-    .read = mp3_stream_read,
-    .deinit = mp3_stream_deinit,
+const decoder_vtable = format.DecoderVTable{
+    .read = decoderRead,
+    .deinit = decoderDeinit,
 };
 
-/// Open streaming MP3 decoder
-pub fn open_stream(allocator: std.mem.Allocator, stream: *io.ReadStream) api.ReadError!*format.AnyStreamDecoder {
-    // Position to the first frame (skip ID3v2 if present)
-    skip_id3v2(stream) catch {};
-    var found = false;
-    var sr: u32 = 0;
-    var ch: u8 = 0;
-    var start_pos = stream.getPos();
-    while (!found) {
-        const saved = stream.getPos();
-        const r = stream.reader();
-        const hdr = frameheader.readFrameHeader(r) catch |e| switch (e) {
-            error.EndOfStream => break,
-            else => {
-                // advance one byte and try again
-                stream.seekTo(saved + 1) catch return error.ReadFailed;
-                continue;
-            },
-        };
-        sr = hdr.header.samplingFrequencyValue() orelse {
-            stream.seekTo(saved + 1) catch return error.ReadFailed;
-            continue;
-        };
-        ch = hdr.header.numberOfChannels();
-        // success: reset to header start
-        stream.seekTo(saved) catch return error.ReadFailed;
-        start_pos = saved;
-        found = true;
-    }
-    if (!found) return error.InvalidFormat;
-
-    const ctx = try allocator.create(Mp3StreamCtx);
-    ctx.* = .{ .allocator = allocator, .stream = stream };
-
-    // Calculate total frames for streaming decoder
-    // For MP3, we'll count frames to get accurate duration
-    const mp3_info = countFrames(stream) catch blk: {
-        // Fallback to file size estimation with higher bitrate
-        const end_pos = stream.getEndPos() catch 0;
-        const file_size = if (end_pos > start_pos) end_pos - start_pos else 0;
-        const estimated_bitrate_kbps: u32 = 252; // calculated from actual file duration
-        const estimated_duration = if (file_size > 0 and estimated_bitrate_kbps > 0)
-            @as(f64, @floatFromInt(file_size * 8)) / @as(f64, @floatFromInt(estimated_bitrate_kbps * 1000))
-        else
-            0.0;
-        break :blk Mp3Info{
-            .sample_rate = sr,
-            .channels = ch,
-            .total_frames = @as(usize, @intFromFloat(estimated_duration * @as(f64, @floatFromInt(sr)))),
-            .total_samples = @as(u64, @intFromFloat(estimated_duration * @as(f64, @floatFromInt(sr)))) * 1152,
-            .duration_seconds = estimated_duration,
-        };
-    };
-
-    const total_frames = mp3_info.total_frames;
-
-    const any = try allocator.create(format.AnyStreamDecoder);
-    any.* = .{
-        .vtable = &mp3_stream_vtable,
-        .context = ctx,
-        .info = .{ .sample_rate = sr, .channels = ch, .sample_type = .i16, .total_frames = total_frames, .duration_seconds = mp3_info.duration_seconds },
-    };
-    // ensure stream at first header
-    stream.seekTo(start_pos) catch return error.ReadFailed;
-    return any;
-}
-
-/// Decode MP3 from bytes (full decode)
-pub fn decode_from_bytes(allocator: std.mem.Allocator, bytes: []const u8) api.ReadError!api.Audio {
-    var stream = io.ReadStream.initMemory(bytes);
-    skip_id3v2(&stream) catch {};
-
-    const end_pos = stream.getEndPos() catch return error.ReadFailed;
-
-    // Find first valid header by scanning forward if necessary
-    var sr: u32 = 0;
-    var ch: u8 = 0;
-    var start_pos = stream.getPos();
-    var found = false;
-    var scan_steps: usize = 0;
-    while (!found) {
-        const saved = stream.getPos();
-        scan_steps += 1;
-        const r0 = stream.reader();
-        const hdr_try = frameheader.readFrameHeader(r0) catch |e| switch (e) {
-            error.EndOfStream => break,
-            else => {
-                if (saved + 1 >= end_pos) break;
-                stream.seekTo(saved + 1) catch return error.ReadFailed;
-                continue;
-            },
-        };
-        sr = hdr_try.header.samplingFrequencyValue() orelse {
-            if (saved + 1 >= end_pos) break;
-            stream.seekTo(saved + 1) catch return error.ReadFailed;
-            continue;
-        };
-        ch = hdr_try.header.numberOfChannels();
-        stream.seekTo(saved) catch return error.ReadFailed;
-        start_pos = saved;
-        found = true;
-    }
-    if (!found) {
-        return error.ReadFailed;
+fn open(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
+    const initial_state = br.*;
+    var initial_pos: ?u64 = null;
+    if (br.file) |*file| {
+        initial_pos = try file.getPos();
     }
 
-    // Rewind to first frame header for decode loop
-    stream.seekTo(start_pos) catch return error.ReadFailed;
+    const scan_result = try scanWithClone(br);
+    const meta_info = scan_result.info;
 
-    var out = std.ArrayList(u8).initCapacity(allocator, 0) catch return error.OutOfMemory;
-    defer out.deinit(allocator);
+    if (br.file) |*file| {
+        if (initial_pos) |pos| file.seekTo(pos) catch {};
+    }
+    br.* = initial_state;
 
-    var prev_bits: ?mp3_bits.Bits = null;
-    var store: [2][32][18]f32 = std.mem.zeroes([2][32][18]f32);
-    var v_vec: [2][1024]f32 = std.mem.zeroes([2][1024]f32);
-
-    var frames_decoded: usize = 0;
-    while (true) {
-        const pos_before = stream.getPos();
-        if (pos_before >= end_pos) break;
-        const rr = stream.reader();
-        var f = frame_mod.decodeFrame(allocator, rr, if (prev_bits) |*p| p else null) catch |e| switch (e) {
-            error.EndOfStream => break,
-            else => {
-                if (pos_before + 1 >= end_pos) break;
-                stream.seekTo(pos_before + 1) catch return error.ReadFailed;
-                continue;
-            },
-        };
-        // Release previous reservoir
-        if (prev_bits) |*pb| pb.vec.deinit();
-        prev_bits = null;
-
-        // carry state
-        f.store = store;
-        f.v_vec = v_vec;
-
-        const pcm = f.decode(allocator) catch {
-            f.deinit();
-            if (pos_before + 1 >= end_pos) break;
-            stream.seekTo(pos_before + 1) catch return error.ReadFailed;
-            continue;
-        };
-        frames_decoded += 1;
-        // persist state
-        store = f.store;
-        v_vec = f.v_vec;
-
-        // capture reservoir for next frame
-        prev_bits = f.main_data_bits;
-        f.main_data_bits.vec = std.array_list.Managed(u8).init(allocator);
-        f.deinit();
-
-        out.appendSlice(allocator, pcm) catch {
-            allocator.free(pcm);
-            return error.OutOfMemory;
-        };
-        allocator.free(pcm);
+    br.seekTo(scan_result.first_frame);
+    br.alignToByte();
+    if (br.file != null) {
+        br.reader.fillMore() catch {};
     }
 
-    if (prev_bits) |*pb| pb.vec.deinit();
-
-    if (frames_decoded == 0) {
-        return error.ReadFailed;
-    }
-
-    const data = out.toOwnedSlice(allocator) catch return error.OutOfMemory;
-    return .{
-        .params = .{ .sample_rate = sr, .channels = ch, .sample_type = .i16 },
-        .data = data,
+    const ctx = try allocator.create(Mp3Decoder);
+    ctx.* = .{
         .allocator = allocator,
-        .format_id = .mp3,
+        .br = br,
+        .pending = std.ArrayList(u8).empty,
+        .sample_rate = meta_info.sample_rate,
+        .channels = meta_info.channels,
+        .total_frames = meta_info.total_frames,
     };
+
+    const decoder = try allocator.create(format.Decoder);
+    decoder.* = .{
+        .vtable = &decoder_vtable,
+        .context = ctx,
+        .info = .{
+            .sample_rate = meta_info.sample_rate,
+            .channels = meta_info.channels,
+            .sample_type = .i16,
+            .total_frames = meta_info.total_frames,
+            .duration_seconds = meta_info.duration_seconds,
+        },
+        .allocator = allocator,
+        .id = .mp3,
+    };
+
+    return decoder;
 }
 
-/// Encode PCM audio to MP3 format
-pub fn encode(writer: *std.Io.Writer, audio: *const api.Audio) api.WriteError!void {
-    // TODO: Implement MP3 encoding
-    _ = writer;
-    _ = audio;
-    return error.WriteFailed;
-}
-
-/// MP3 format vtable
 pub const vtable = format.VTable{
     .id = .mp3,
     .probe = probe,
-    .info_reader = info_reader,
-    .decode_from_bytes = decode_from_bytes,
-    .open_stream = open_stream,
-    .encode = encode,
+    .info = info,
+    .open = open,
 };
 
 // MP3 constants
