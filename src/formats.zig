@@ -5,6 +5,7 @@ const BitReader = @import("BitReader.zig");
 // Simplified format registry - only WAV for now during migration
 pub const supported_formats: []const VTable = &[_]VTable{
     @import("wav.zig").vtable,
+    @import("aac.zig").vtable,
     @import("mp3.zig").vtable,
     @import("qoa.zig").vtable,
 };
@@ -14,10 +15,9 @@ pub const Id = enum {
     qoa,
     wav,
     mp3,
+    aac,
     // flac,
     // vorbis,
-    // mp3,
-    // aac,
 };
 
 /// Unified decoder interface - all formats implement this
