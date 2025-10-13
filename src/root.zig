@@ -348,7 +348,7 @@ pub fn decodeMemory(allocator: std.mem.Allocator, data: []const u8) !Audio {
 
 test {
     @import("std").testing.refAllDecls(@This());
-    // _ = @import("qoa_test.zig");
+    _ = @import("qoa_test.zig");
     _ = @import("wav_test.zig");
     _ = @import("mp3/tests.zig");
     // _ = @import("vorbis_test.zig");

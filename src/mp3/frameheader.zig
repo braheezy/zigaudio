@@ -211,6 +211,10 @@ pub fn readFrameHeader(reader: *std.Io.Reader) api.ReadError!struct { header: Fr
         // Shift bytes left and read next byte
         header_raw = (header_raw << 8) & 0xFFFFFF00;
 
+        if (reader.seek >= reader.end) {
+            return error.EndOfStream;
+        }
+
         const next_byte = reader.peek(1) catch |e| switch (e) {
             error.EndOfStream => return error.EndOfStream,
             else => return error.ReadFailed,

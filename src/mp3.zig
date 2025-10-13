@@ -60,8 +60,6 @@ fn skipId3(br: *BitReader) !void {
     const sz3: usize = @intCast(peek[9] & 0x7F);
     const tag_size: usize = (sz0 << 21) | (sz1 << 14) | (sz2 << 7) | sz3;
 
-    std.debug.print("[mp3] ID3 tag detected: version={d} size={d} flags=0x{x} pos={d}\n", .{ version_major, tag_size, flags, br.tell() });
-
     var total_skip: usize = 10 + tag_size;
     if (version_major == 4 and (flags & 0x10) != 0) total_skip += 10;
 
@@ -100,6 +98,12 @@ const scan_buffer_limit: usize = 512 * 1024;
 fn scanMp3Mutable(br: *BitReader) !ScanResult {
     try skipId3(br);
 
+    const remaining = br.reader.buffer[br.reader.seek..br.reader.end];
+    if (remaining.len < 4) return error.InvalidFormat;
+    if (remaining[0] != 0xFF and !(remaining.len >= 3 and remaining[0] == 'I' and remaining[1] == 'D' and remaining[2] == '3')) {
+        return error.InvalidFormat;
+    }
+
     var sr: ?u32 = null;
     var ch: ?u8 = null;
     var first_frame: ?usize = null;
@@ -114,6 +118,14 @@ fn scanMp3Mutable(br: *BitReader) !ScanResult {
         if (!has_enough) break;
 
         br.alignToByte();
+        const available_bytes = br.reader.end - br.reader.seek;
+        if (available_bytes < 4) break;
+        const first_byte = br.reader.buffer[br.reader.seek];
+        if (first_byte != 0xFF) {
+            try skipOneByte(br);
+            scanned_bytes += 1;
+            continue;
+        }
         const probe_start = try absoluteBytePosition(br);
 
         const hdr_res = frameheader.readFrameHeader(&br.reader) catch {
@@ -136,10 +148,10 @@ fn scanMp3Mutable(br: *BitReader) !ScanResult {
 
         if (sr) |fixed_sr| {
             if (frame_sr != fixed_sr or frame_ch != ch.?) {
-            try skipOneByte(br);
-            scanned_bytes += 1;
-            continue;
-        }
+                try skipOneByte(br);
+                scanned_bytes += 1;
+                continue;
+            }
         } else {
             sr = frame_sr;
             ch = frame_ch;
