@@ -1,11 +1,11 @@
 const std = @import("std");
 const api = @import("root.zig");
 const format = @import("formats.zig");
-const io = @import("io.zig");
-
+const BitReader = @import("BitReader.zig");
 const c = @import("vorbis/vorbis.zig");
 
 const SampleType = api.SampleType;
+const ArrayList = std.ArrayList;
 
 fn translateError(code: c_int) api.ReadError {
     return switch (code) {
@@ -20,9 +20,9 @@ fn translateError(code: c_int) api.ReadError {
 }
 
 fn infoFromHandle(handle: *c.stb_vorbis) api.AudioInfo {
-    const info = c.stb_vorbis_get_info(handle);
-    const sample_rate: u32 = @intCast(info.sample_rate);
-    const channels: u8 = @intCast(info.channels);
+    const vorbis_info = c.stb_vorbis_get_info(handle);
+    const sample_rate: u32 = @intCast(vorbis_info.sample_rate);
+    const channels: u8 = @intCast(vorbis_info.channels);
     const total_samples = c.stb_vorbis_stream_length_in_samples(handle);
     const total_frames: usize = if (total_samples == 0) 0 else @intCast(total_samples);
     const duration_seconds: f64 = if (sample_rate != 0 and total_frames != 0)
@@ -38,210 +38,166 @@ fn infoFromHandle(handle: *c.stb_vorbis) api.AudioInfo {
     };
 }
 
-fn openMemory(allocator: std.mem.Allocator, bytes: []const u8) !*c.stb_vorbis {
-    _ = allocator; // Not needed when using null alloc
+fn openVorbis(bytes: []const u8) !*c.stb_vorbis {
     var err: c_int = 0;
-    // Pass null for alloc config to let stb_vorbis use malloc
-    const handle = try c.stb_vorbis_open_memory(bytes.ptr, @intCast(bytes.len), &err, null);
-    if (handle == null) {
-        return translateError(err);
+    return c.stb_vorbis_open_memory(bytes.ptr, @intCast(bytes.len), &err, null) catch translateError(err);
+}
+
+fn readAllBytes(br: *BitReader, allocator: std.mem.Allocator) ![]u8 {
+    if (br.file) |*file| {
+        const total = br.totalSize() orelse return error.InvalidFormat;
+        try file.seekTo(0);
+        const buffer = try allocator.alloc(u8, total);
+        var read_total: usize = 0;
+        while (read_total < total) {
+            const amt = try file.read(buffer[read_total..]);
+            if (amt == 0) break;
+            read_total += amt;
+        }
+        return buffer[0..read_total];
     }
-    return handle;
+
+    const data = br.reader.buffer[0..br.reader.end];
+    const copy = try allocator.alloc(u8, data.len);
+    @memcpy(copy, data);
+    return copy;
 }
 
-fn readAllFromFile(allocator: std.mem.Allocator, stream: *io.ReadStream) ![]u8 {
-    // For file streams, go directly to the file handle to read efficiently
-    if (stream.* == .file) {
-        const file = stream.file.file;
-        const file_size = file.getEndPos() catch return error.ReadFailed;
-        const bytes = file.readToEndAlloc(allocator, file_size) catch return error.ReadFailed;
-        return bytes;
-    }
-
-    return error.ReadFailed;
-}
-
-pub fn probe(stream: *io.ReadStream) !bool {
-    const pos = stream.getPos();
-    defer stream.seekTo(pos) catch {};
-
-    // Simple magic byte check for Ogg container format
-    // Ogg magic: "OggS" (0x4f 0x67 0x67 0x53)
-    switch (stream.*) {
-        .memory => |mem| {
-            if (mem.buffer.len < 4) return false;
-            return mem.buffer[0] == 0x4f and
-                mem.buffer[1] == 0x67 and
-                mem.buffer[2] == 0x67 and
-                mem.buffer[3] == 0x53;
-        },
-        .file => |*fr| {
-            var header: [4]u8 = undefined;
-            var tmp: [1][]u8 = .{&header};
-            const n = fr.interface.readVec(&tmp) catch return false;
-            if (n < 4) return false;
-            return header[0] == 0x4f and
-                header[1] == 0x67 and
-                header[2] == 0x67 and
-                header[3] == 0x53;
-        },
-    }
-}
-
-pub fn info_reader(stream: *io.ReadStream) !api.AudioInfo {
-    const pos = stream.getPos();
-    defer stream.seekTo(pos) catch {};
-
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const temp_allocator = gpa.allocator();
-
-    return switch (stream.*) {
-        .memory => |mem| blk: {
-            const handle = try openMemory(temp_allocator, mem.buffer);
-            defer c.stb_vorbis_close(handle);
-            break :blk infoFromHandle(handle);
-        },
-        .file => blk: {
-            const bytes = try readAllFromFile(temp_allocator, stream);
-            defer temp_allocator.free(bytes);
-            const handle = try openMemory(temp_allocator, bytes);
-            defer c.stb_vorbis_close(handle);
-            break :blk infoFromHandle(handle);
-        },
-    };
-}
-
-pub fn decode_from_bytes(allocator: std.mem.Allocator, bytes: []const u8) !api.Audio {
+fn decodeEntireStream(allocator: std.mem.Allocator, bytes: []const u8) !struct {
+    info: api.AudioInfo,
+    samples: []i16,
+} {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
-    const arena_allocator = arena.allocator();
 
-    const handle = try openMemory(arena_allocator, bytes);
+    const handle = try openVorbis(bytes);
     defer c.stb_vorbis_close(handle);
 
-    const info = c.stb_vorbis_get_info(handle);
-    const channels: usize = @intCast(info.channels);
-    const frame_bytes = (api.SampleFormat{ .sample_type = SampleType.i16, .channel_count = @intCast(channels) }).bytesPerFrame();
+    const base_info = infoFromHandle(handle);
+    if (base_info.channels == 0) return error.InvalidFormat;
 
-    const total_samples = c.stb_vorbis_stream_length_in_samples(handle);
-    if (total_samples == 0) return error.ReadFailed;
-    const total_frames: usize = @intCast(total_samples);
-    const total_bytes = total_frames * frame_bytes;
+    var samples = ArrayList(i16).empty;
+    defer samples.deinit(allocator);
 
-    var out = try allocator.alloc(u8, total_bytes);
-    errdefer allocator.free(out);
+    const frame_samples: usize = 4096;
+    const channel_count: usize = base_info.channels;
+    const buffer_len = frame_samples * channel_count;
+    var temp = try allocator.alloc(i16, buffer_len);
+    defer allocator.free(temp);
 
-    var offset: usize = 0;
-    while (offset < out.len) {
-        const samples_written = c.stb_vorbis_get_frame_short_interleaved(
+    while (true) {
+        const written = c.stb_vorbis_get_frame_short_interleaved(
             handle,
-            @intCast(channels),
-            @as([*c]c.int16, @ptrCast(@alignCast(out[offset..].ptr))),
-            @intCast((out.len - offset) / @sizeOf(i16)),
+            @intCast(channel_count),
+            @as([*c]c.int16, @ptrCast(@alignCast(temp.ptr))),
+            @intCast(frame_samples),
         );
-        if (samples_written <= 0) break;
-        offset += @as(usize, @intCast(samples_written)) * channels * @sizeOf(i16);
+        if (written <= 0) break;
+        const per_channel = @as(usize, @intCast(written));
+        const total = per_channel * channel_count;
+        try samples.appendSlice(allocator, temp[0..total]);
     }
 
-    return .{
-        .params = .{
-            .sample_rate = @intCast(info.sample_rate),
-            .channels = @intCast(channels),
-            .sample_type = SampleType.i16,
-        },
-        .data = out,
-        .allocator = allocator,
-        .format_id = .vorbis,
-    };
+    if (samples.items.len == 0) return error.InvalidFormat;
+
+    var decoded_info = base_info;
+    const total_frames = samples.items.len / channel_count;
+    decoded_info.total_frames = total_frames;
+    decoded_info.duration_seconds = if (decoded_info.sample_rate != 0)
+        @as(f64, @floatFromInt(total_frames)) / @as(f64, @floatFromInt(decoded_info.sample_rate))
+    else
+        0.0;
+
+    const owned = try samples.toOwnedSlice(allocator);
+    return .{ .info = decoded_info, .samples = owned };
 }
 
-const StreamCtx = struct {
-    allocator: std.mem.Allocator,
-    vorbis_buffer: []u8, // Buffer used by vorbis decoder
-    bytes: []u8,
-    vorbis: *c.stb_vorbis,
-    info: api.AudioInfo,
-};
+fn decoderRead(decoder: *format.Decoder, dst: []i16) !usize {
+    const ctx: *DecoderContext = @ptrCast(@alignCast(decoder.context));
+    if (ctx.position >= ctx.samples.len) return 0;
 
-fn streamRead(dec: *format.AnyStreamDecoder, dst: []u8) api.ReadError!usize {
-    const ctx: *StreamCtx = @ptrCast(@alignCast(dec.context));
-    if (dst.len == 0) return 0;
-    const channels = ctx.info.channels;
-    const samples_cap = dst.len / @sizeOf(i16);
-    if (samples_cap == 0) return 0;
-    const written = c.stb_vorbis_get_frame_short_interleaved(
-        ctx.vorbis,
-        @intCast(channels),
-        @as([*c]c.int16, @ptrCast(@alignCast(dst.ptr))),
-        @intCast(samples_cap),
-    );
-    if (written <= 0) return error.EndOfStream;
-    return @as(usize, @intCast(written)) * channels * @sizeOf(i16);
+    const remaining = ctx.samples[ctx.position..];
+    const copy_count = @min(dst.len, remaining.len);
+    std.mem.copyForwards(i16, dst[0..copy_count], remaining[0..copy_count]);
+    ctx.position += copy_count;
+    return copy_count;
 }
 
-fn streamDeinit(dec: *format.AnyStreamDecoder) void {
-    const ctx: *StreamCtx = @ptrCast(@alignCast(dec.context));
-    c.stb_vorbis_close(ctx.vorbis);
-    ctx.allocator.free(ctx.vorbis_buffer);
-    ctx.allocator.free(ctx.bytes);
+fn decoderDeinit(decoder: *format.Decoder) void {
+    const ctx: *DecoderContext = @ptrCast(@alignCast(decoder.context));
+    ctx.bit_reader.deinit();
+    ctx.allocator.destroy(ctx.bit_reader);
+    ctx.allocator.free(ctx.samples);
     ctx.allocator.destroy(ctx);
-    ctx.allocator.destroy(dec);
+    decoder.allocator.destroy(decoder);
 }
 
-const stream_vtable = format.StreamDecoderVTable{
-    .read = streamRead,
-    .deinit = streamDeinit,
+const decoder_vtable = format.DecoderVTable{
+    .read = decoderRead,
+    .deinit = decoderDeinit,
 };
 
-pub fn open_stream(allocator: std.mem.Allocator, stream: *io.ReadStream) !*format.AnyStreamDecoder {
-    const pos = stream.getPos();
-    defer stream.seekTo(pos) catch {};
+const DecoderContext = struct {
+    allocator: std.mem.Allocator,
+    samples: []i16,
+    position: usize = 0,
+    info: api.AudioInfo,
+    bit_reader: *BitReader,
+};
 
-    const bytes = switch (stream.*) {
-        .memory => |mem| blk: {
-            const buf = try allocator.alloc(u8, mem.buffer.len);
-            std.mem.copyForwards(u8, buf, mem.buffer);
-            break :blk buf;
-        },
-        .file => blk: {
-            const result = try readAllFromFile(allocator, stream);
-            break :blk result;
-        },
-    };
-
-    var err: c_int = 0;
-    const buffer_size = 256 * 1024;
-    const vorbis_buffer = try allocator.alloc(u8, buffer_size);
-    // errdefer allocator.free(vorbis_buffer);
-
-    var alloc_config = c.stb_vorbis_alloc{
-        .alloc_buffer = vorbis_buffer.ptr,
-        .alloc_buffer_length_in_bytes = @intCast(vorbis_buffer.len),
-    };
-    const handle = try c.stb_vorbis_open_memory(bytes.ptr, @intCast(bytes.len), &err, &alloc_config);
-    if (handle == null) {
-        allocator.free(vorbis_buffer);
-        return translateError(err);
+fn probe(br: *BitReader) !bool {
+    const start_pos = br.tell();
+    const saved_bits = br.bit_index;
+    defer {
+        br.seekTo(start_pos);
+        br.bit_index = saved_bits;
     }
 
-    const ctx = try allocator.create(StreamCtx);
-    errdefer allocator.destroy(ctx);
+    if (!try br.has(32)) return false;
+    br.alignToByte();
+    const b0 = try br.readBits(8);
+    const b1 = try br.readBits(8);
+    const b2 = try br.readBits(8);
+    const b3 = try br.readBits(8);
+    return b0 == 'O' and b1 == 'g' and b2 == 'g' and b3 == 'S';
+}
+
+fn info(br: *BitReader) !api.AudioInfo {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var clone = try br.clone(arena.allocator());
+    defer BitReader.deinitClone(&clone);
+
+    const data = clone.reader.buffer[0..clone.reader.end];
+    const handle = try openVorbis(data);
+    defer c.stb_vorbis_close(handle);
+    return infoFromHandle(handle);
+}
+
+fn open(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
+    const data = try readAllBytes(br, allocator);
+    defer allocator.free(data);
+
+    const decoded = try decodeEntireStream(allocator, data);
+
+    const ctx = try allocator.create(DecoderContext);
     ctx.* = .{
         .allocator = allocator,
-        .vorbis_buffer = vorbis_buffer,
-        .bytes = bytes,
-        .vorbis = handle,
-        .info = infoFromHandle(handle),
+        .samples = decoded.samples,
+        .position = 0,
+        .info = decoded.info,
+        .bit_reader = br,
     };
 
-    const any = try allocator.create(format.AnyStreamDecoder);
-    any.* = .{
-        .vtable = &stream_vtable,
+    const decoder = try allocator.create(format.Decoder);
+    decoder.* = .{
+        .vtable = &decoder_vtable,
         .context = ctx,
         .info = ctx.info,
+        .allocator = allocator,
+        .id = .vorbis,
     };
-    return any;
+    return decoder;
 }
 
 pub fn encode(writer: *std.Io.Writer, audio: *const api.Audio) !void {
@@ -253,8 +209,6 @@ pub fn encode(writer: *std.Io.Writer, audio: *const api.Audio) !void {
 pub const vtable = format.VTable{
     .id = .vorbis,
     .probe = probe,
-    .info_reader = info_reader,
-    .decode_from_bytes = decode_from_bytes,
-    .open_stream = open_stream,
-    .encode = encode,
+    .info = info,
+    .open = open,
 };

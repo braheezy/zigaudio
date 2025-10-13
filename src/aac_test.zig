@@ -7,12 +7,8 @@ const SampleType = api.SampleType;
 
 const test_aac_data = @embedFile("test-files/fanfare_heartcontainer.aac");
 
-fn initBitReader() !BitReader {
-    return BitReader.initFromMemory(testing.allocator, test_aac_data);
-}
-
 test "AAC probe" {
-    var br = try initBitReader();
+    var br = BitReader.initFromMemory(testing.allocator, test_aac_data);
     defer br.deinit();
     try testing.expect(try aac.vtable.probe(&br));
 
@@ -22,7 +18,7 @@ test "AAC probe" {
 }
 
 test "AAC info" {
-    var br = try initBitReader();
+    var br = BitReader.initFromMemory(testing.allocator, test_aac_data);
     defer br.deinit();
     const info = try aac.vtable.info(&br);
     try testing.expectEqual(@as(u32, 44100), info.sample_rate);

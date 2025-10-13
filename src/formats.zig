@@ -8,6 +8,7 @@ pub const supported_formats: []const VTable = &[_]VTable{
     @import("aac.zig").vtable,
     @import("mp3.zig").vtable,
     @import("qoa.zig").vtable,
+    @import("vorbis.zig").vtable,
 };
 
 pub const Id = enum {
@@ -16,8 +17,7 @@ pub const Id = enum {
     wav,
     mp3,
     aac,
-    // flac,
-    // vorbis,
+    vorbis,
 };
 
 /// Unified decoder interface - all formats implement this
