@@ -186,6 +186,22 @@ pub fn tell(self: *BitReader) usize {
 }
 
 pub fn seekTo(self: *BitReader, pos: usize) void {
+    if (self.file) |*file| {
+        file.seekTo(@intCast(pos)) catch {
+            // leave position unchanged on error
+        };
+        self.reader.seek = 0;
+        self.reader.end = 0;
+        if (self.owned_buffer) |buffer| {
+            const to_fill = @min(buffer.len, self.total_size orelse buffer.len);
+            const filled = file.read(buffer[0..to_fill]) catch 0;
+            self.reader.buffer = buffer;
+            self.reader.end = filled;
+        }
+        self.bit_index = 0;
+        return;
+    }
+
     self.reader.seek = pos;
     self.bit_index = 0;
     if (self.append_list != null) {
@@ -258,6 +274,9 @@ pub fn findStartCode(self: *BitReader, code: u8) ?u8 {
     while (true) {
         const current = self.nextStartCode();
         if (current == null or current.? == code) return current;
+        if (self.file != null and self.reader.seek == self.reader.end) {
+            return null;
+        }
     }
     return null;
 }
@@ -318,6 +337,52 @@ pub fn discardReadBytes(self: *BitReader) void {
 
 pub fn totalSize(self: *BitReader) ?usize {
     return self.total_size;
+}
+
+pub fn clone(self: *const BitReader, allocator: std.mem.Allocator) !BitReader {
+    var cloned = self.*;
+    cloned.allocator = allocator;
+    cloned.append_list = null;
+    cloned.append_ended = self.append_ended;
+    cloned.reader.vtable = &vtable;
+    cloned.owned_buffer = null;
+
+    if (self.owned_buffer) |buffer| {
+        const copy = try allocator.alloc(u8, buffer.len);
+        @memcpy(copy, buffer);
+        cloned.reader.buffer = copy;
+        cloned.reader.seek = self.reader.seek;
+        cloned.reader.end = self.reader.end;
+        cloned.owned_buffer = copy;
+    } else if (self.file == null) {
+        const slice = self.reader.buffer[self.reader.seek..self.reader.end];
+        if (slice.len > 0) {
+            const copy = try allocator.alloc(u8, slice.len);
+            @memcpy(copy, slice);
+            cloned.reader.buffer = copy;
+            cloned.reader.seek = 0;
+            cloned.reader.end = slice.len;
+            cloned.owned_buffer = copy;
+        } else {
+            cloned.reader.buffer = &[0]u8{};
+            cloned.reader.seek = 0;
+            cloned.reader.end = 0;
+        }
+    }
+
+    cloned.file = null;
+    return cloned;
+}
+
+pub fn deinitClone(self: *BitReader) void {
+    if (self.owned_buffer) |buffer| {
+        self.allocator.free(buffer);
+        self.owned_buffer = null;
+    }
+    if (self.append_list) |*list| {
+        list.deinit(self.allocator);
+        self.append_list = null;
+    }
 }
 
 // std.Io.Reader VTable implementation

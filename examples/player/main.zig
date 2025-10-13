@@ -38,9 +38,8 @@ pub fn main() !void {
         return;
     }
 
-    var stdin_buffer: [256]u8 = undefined;
-    var stdin_reader = std.fs.File.stdin().reader(&stdin_buffer);
-    const stdin = &stdin_reader.interface;
+    var stdin_file = std.fs.File.stdin();
+    var stdin_buf: [1]u8 = .{0};
 
     if (full_decode_first) {
         const path = audio_path.?;
@@ -150,12 +149,24 @@ pub fn main() !void {
 
     while (player.isPlaying() and !quit_requested) {
         std.Thread.sleep(std.time.ns_per_ms * 25);
-        const maybe_key = stdin.peek(1) catch null;
-        if (maybe_key) |key| {
-            if (key[0] == 'q') {
-                quit_requested = true;
-                break;
-            }
+        switch (builtin.os.tag) {
+            .windows, .wasi => {},
+            else => {
+                var fds = [_]std.posix.pollfd{
+                    .{ .fd = stdin_file.handle, .events = std.posix.POLL.IN, .revents = 0 },
+                };
+                const poll_res = std.posix.poll(&fds, 0) catch 0;
+                if (poll_res > 0 and (fds[0].revents & std.posix.POLL.IN) != 0) {
+                    const read_bytes = stdin_file.read(&stdin_buf) catch |err| switch (err) {
+                        error.InputOutput => 0,
+                        else => return err,
+                    };
+                    if (read_bytes > 0 and (stdin_buf[0] == 'q' or stdin_buf[0] == 'Q')) {
+                        quit_requested = true;
+                        break;
+                    }
+                }
+            },
         }
     }
 
