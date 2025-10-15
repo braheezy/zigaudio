@@ -16,7 +16,7 @@ A Zig library for reading and writing audio files with a streaming-capable, form
 | WAV    | ✅   | ❌    |
 | MP3    | ✅   | ❌    |
 | AAC    | ✅   | ❌    |
-| FLAC   | ❌   | ❌    |
+| FLAC   | ✅   | ❌    |
 | OGG    | ✅   | ❌    |
 
 ## Installation
