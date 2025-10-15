@@ -12,7 +12,8 @@
             .path = "zoto",
         },
         .faad2 = .{
-            .path = "faad2",
+            .url = "git+https://github.com/braheezy/faad2.git#048779de69b840500349fcf10f5042bb02b5171c",
+            .hash = "faad2-0.0.0-9Fe97pwMAAAP_Ktu1DlPjgBI2MiljG57ztx3NgilC09W",
         },
     },
     .paths = .{

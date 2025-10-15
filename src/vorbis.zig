@@ -40,7 +40,14 @@ fn infoFromHandle(handle: *c.stb_vorbis) api.AudioInfo {
 
 fn openVorbis(bytes: []const u8) !*c.stb_vorbis {
     var err: c_int = 0;
-    return c.stb_vorbis_open_memory(bytes.ptr, @intCast(bytes.len), &err, null) catch translateError(err);
+    if (bytes.len == 0) return error.InvalidFormat;
+
+    const handle_opt = c.stb_vorbis_open_memory(bytes.ptr, @intCast(bytes.len), &err, null) catch {
+        return translateError(err);
+    };
+
+    const handle = handle_opt orelse return translateError(err);
+    return handle;
 }
 
 fn readAllBytes(br: *BitReader, allocator: std.mem.Allocator) ![]u8 {
@@ -169,6 +176,7 @@ fn info(br: *BitReader) !api.AudioInfo {
     defer BitReader.deinitClone(&clone);
 
     const data = clone.reader.buffer[0..clone.reader.end];
+    if (data.len == 0) return error.InvalidFormat;
     const handle = try openVorbis(data);
     defer c.stb_vorbis_close(handle);
     return infoFromHandle(handle);

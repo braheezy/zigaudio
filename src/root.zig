@@ -351,6 +351,7 @@ test {
     _ = @import("qoa_test.zig");
     _ = @import("wav_test.zig");
     _ = @import("aac_test.zig");
+    _ = @import("flac_test.zig");
     _ = @import("mp3/tests.zig");
-    // _ = @import("vorbis_test.zig");
+    _ = @import("vorbis_test.zig");
 }
