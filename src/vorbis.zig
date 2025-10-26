@@ -38,11 +38,20 @@ fn infoFromHandle(handle: *c.stb_vorbis) api.AudioInfo {
     };
 }
 
-fn openVorbis(bytes: []const u8) !*c.stb_vorbis {
+fn openVorbis(bytes: []const u8, alloc_buffer: ?[]u8) !*c.stb_vorbis {
     var err: c_int = 0;
     if (bytes.len == 0) return error.InvalidFormat;
 
-    const handle_opt = c.stb_vorbis_open_memory(bytes.ptr, @intCast(bytes.len), &err, null) catch {
+    var alloc_cfg: ?c.stb_vorbis_alloc = null;
+    if (alloc_buffer) |buf| {
+        alloc_cfg = c.stb_vorbis_alloc{
+            .alloc_buffer = buf.ptr,
+            .alloc_buffer_length_in_bytes = @intCast(buf.len),
+        };
+    }
+
+    const alloc_ptr = if (alloc_cfg) |*cfg| cfg else null;
+    const handle_opt = c.stb_vorbis_open_memory(bytes.ptr, @intCast(bytes.len), &err, alloc_ptr) catch {
         return translateError(err);
     };
 
@@ -77,7 +86,8 @@ fn decodeEntireStream(allocator: std.mem.Allocator, bytes: []const u8) !struct {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const handle = try openVorbis(bytes);
+    // Don't provide an allocation buffer - let stb_vorbis use malloc
+    const handle = try openVorbis(bytes, null);
     defer c.stb_vorbis_close(handle);
 
     const base_info = infoFromHandle(handle);
@@ -177,7 +187,7 @@ fn info(br: *BitReader) !api.AudioInfo {
 
     const data = clone.reader.buffer[0..clone.reader.end];
     if (data.len == 0) return error.InvalidFormat;
-    const handle = try openVorbis(data);
+    const handle = try openVorbis(data, null);
     defer c.stb_vorbis_close(handle);
     return infoFromHandle(handle);
 }
