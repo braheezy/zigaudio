@@ -249,6 +249,52 @@ pub const decoder_vtable = format.DecoderVTable{
     .deinit = decoderDeinit,
 };
 
+fn encode(writer: *std.Io.Writer, audio: *const api.Audio) api.WriteError!void {
+    if (audio.params.sample_type != .i16) return error.UnsupportedBitDepth;
+    if (audio.params.channels == 0) return error.UnsupportedChannelCount;
+
+    const channels_u8 = audio.params.channels;
+    const channels: u16 = @intCast(channels_u8);
+    const sample_rate: u32 = audio.params.sample_rate;
+    if (sample_rate == 0) return error.UnsupportedSampleRate;
+
+    const bits_per_sample: u16 = 16;
+    const bytes_per_sample: usize = bits_per_sample / 8;
+    const bytes_per_sample_u16: u16 = @intCast(bytes_per_sample);
+
+    const block_align: u16 = channels * bytes_per_sample_u16;
+    const block_align_u32: u32 = @intCast(block_align);
+    const byte_rate: u32 = sample_rate * block_align_u32;
+
+    const data_len = audio.data.len;
+    if (data_len % bytes_per_sample != 0) return error.InvalidFormat;
+    if (data_len > std.math.maxInt(u32)) return error.Unsupported;
+    const data_len_u32: u32 = @intCast(data_len);
+
+    const total_frames = audio.frameCount();
+    if (total_frames > std.math.maxInt(u32)) return error.Unsupported;
+
+    const chunk_size: u32 = 36 + data_len_u32;
+
+    var header: [44]u8 = undefined;
+    std.mem.copyForwards(u8, header[0..4], "RIFF");
+    std.mem.writeInt(u32, header[4..8], chunk_size, .little);
+    std.mem.copyForwards(u8, header[8..12], "WAVE");
+    std.mem.copyForwards(u8, header[12..16], "fmt ");
+    std.mem.writeInt(u32, header[16..20], 16, .little);
+    std.mem.writeInt(u16, header[20..22], 1, .little);
+    std.mem.writeInt(u16, header[22..24], channels, .little);
+    std.mem.writeInt(u32, header[24..28], sample_rate, .little);
+    std.mem.writeInt(u32, header[28..32], byte_rate, .little);
+    std.mem.writeInt(u16, header[32..34], block_align, .little);
+    std.mem.writeInt(u16, header[34..36], bits_per_sample, .little);
+    std.mem.copyForwards(u8, header[36..40], "data");
+    std.mem.writeInt(u32, header[40..44], data_len_u32, .little);
+
+    try writer.writeAll(&header);
+    try writer.writeAll(audio.data);
+}
+
 fn open(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
     const metadata = try parseMetadata(br);
 
@@ -299,4 +345,5 @@ pub const vtable = format.VTable{
     .probe = probe,
     .info = info,
     .open = open,
+    .encode = encode,
 };

@@ -24,10 +24,11 @@ pub const ReadError = Error || std.mem.Allocator.Error || std.fs.File.ReadError 
 };
 
 ///! Error set for write/encode APIs.
-pub const WriteError = Error || std.mem.Allocator.Error || error{
-    WriteFailed,
-    EndOfStream,
-};
+pub const WriteError = Error
+    || std.mem.Allocator.Error
+    || std.fs.File.OpenError
+    || std.fs.File.WriteError
+    || std.Io.Writer.Error;
 
 ///! Metadata about a decoded stream without requiring full decode.
 /// Contains the parameters players typically need to set up output.
@@ -344,6 +345,19 @@ pub fn decodeMemory(allocator: std.mem.Allocator, data: []const u8) !Audio {
         .allocator = allocator,
         .format_id = decoder.id,
     };
+}
+
+/// Encode managed audio to a file on disk using the requested format.
+pub fn encodeToPath(id: Id, path: []const u8, audio: *const Audio) WriteError!void {
+    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer file.close();
+
+    var buffer: [4096]u8 = undefined;
+    var file_writer = file.writer(&buffer);
+    const writer = &file_writer.interface;
+
+    try format.encode(id, writer, audio);
+    try writer.flush();
 }
 
 test {

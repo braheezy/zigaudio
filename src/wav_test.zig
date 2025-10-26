@@ -65,3 +65,22 @@ test "WAV error handling" {
     defer invalid_br.deinit();
     try testing.expectError(error.InvalidFormat, wav.vtable.info(&invalid_br));
 }
+
+test "WAV encode to writer" {
+    var audio = try api.decodeMemory(testing.allocator, test_wav_data);
+    defer audio.deinit();
+
+    var buffer = std.ArrayList(u8).init(testing.allocator);
+    defer buffer.deinit();
+
+    var writer_adapter = std.Io.Writer.fromArrayList(&buffer);
+    const writer = &writer_adapter.interface;
+
+    const encode_fn = wav.vtable.encode orelse unreachable;
+    try encode_fn(writer, &audio);
+    try writer.flush();
+
+    try testing.expect(buffer.items.len > 44);
+    try testing.expectEqualSlices(u8, "RIFF", buffer.items[0..4]);
+    try testing.expectEqualSlices(u8, "WAVE", buffer.items[8..12]);
+}

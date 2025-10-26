@@ -4,16 +4,13 @@
     .fingerprint = 0x8d32a56db86b3384, // Changing this has security and trust implications.
     .minimum_zig_version = "0.15.1",
     .dependencies = .{
-        // .zoto = .{
-        //     .url = "git+https://github.com/braheezy/zoto#2c47b249b0cbe4619206c02c1749f699a30c0282",
-        //     .hash = "zoto-0.0.0-Eh0DjGRIAQCodXdNG_ZX0r8atQgadtSdkVmvFMDbWpZR",
-        // },
         .zoto = .{
-            .path = "zoto",
+            .url = "git+https://github.com/braheezy/zoto#b05da148128c23eb5f5a3ee6aa969ec9ad096b5c",
+            .hash = "zoto-0.1.0-Eh0DjENKAQAPNsfpWxHIcMQP8QoAch0qqn0LgTUCc0XI",
         },
         .faad2 = .{
-            .url = "git+https://github.com/braheezy/faad2.git#048779de69b840500349fcf10f5042bb02b5171c",
-            .hash = "faad2-0.0.0-9Fe97pwMAAAP_Ktu1DlPjgBI2MiljG57ztx3NgilC09W",
+            .url = "git+https://github.com/braheezy/faad2.git#f6bbda75bb5d029696b4ec94e39d8d691f47dfe1",
+            .hash = "faad2-0.0.0-9Fe97hsNAACQLr8XGUyskz8SjZcFh696bknbPX9ZI4vO",
         },
     },
     .paths = .{

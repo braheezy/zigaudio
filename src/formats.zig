@@ -68,6 +68,9 @@ pub const VTable = struct {
 
     /// Create streaming decoder from BitReader
     open: *const fn (allocator: std.mem.Allocator, *BitReader) anyerror!*Decoder,
+
+    /// Encode managed audio via std.Io.Writer
+    encode: ?*const fn (*std.Io.Writer, *const api.Audio) api.WriteError!void = null,
 };
 
 /// Probe all formats to find a match
@@ -108,6 +111,20 @@ pub fn openDecoder(allocator: std.mem.Allocator, br: *BitReader) !*Decoder {
         if (fmt.probe(br) catch false) {
             br.seekTo(start_pos);
             return fmt.open(allocator, br);
+        }
+    }
+    return error.Unsupported;
+}
+
+/// Encode audio using the specified format id
+pub fn encode(id: Id, writer: *std.Io.Writer, audio: *const api.Audio) api.WriteError!void {
+    for (supported_formats) |fmt| {
+        if (fmt.id == id) {
+            if (fmt.encode) |encode_fn| {
+                return encode_fn(writer, audio);
+            } else {
+                return error.Unsupported;
+            }
         }
     }
     return error.Unsupported;
