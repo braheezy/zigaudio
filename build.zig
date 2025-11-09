@@ -47,34 +47,25 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     // Bench binary
-    // const bench_mod = b.createModule(.{
-    //     .root_source_file = b.path("examples/bench/main.zig"),
-    //     .target = target,
-    //     .optimize = optimize,
-    //     .imports = &.{.{ .name = "zigaudio", .module = lib_mod }},
-    // });
-    // const bench_exe = b.addExecutable(.{
-    //     .name = "bench",
-    //     .root_module = bench_mod,
-    // });
-    // b.installArtifact(bench_exe);
-    // const bench_run = b.addRunArtifact(bench_exe);
-    // if (b.args) |args| bench_run.addArgs(args);
-    // const bench_step = b.step("bench", "Run the bench example");
-    // bench_step.dependOn(&bench_run.step);
+    const bench_mod = b.createModule(.{
+        .root_source_file = b.path("examples/bench/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "zigaudio", .module = lib_mod }},
+    });
+    const bench_exe = b.addExecutable(.{
+        .name = "bench",
+        .root_module = bench_mod,
+    });
+    b.installArtifact(bench_exe);
 
-    // Bench file binary
-    // const bench_file_mod = b.createModule(.{
-    //     .root_source_file = b.path("examples/bench_file/main.zig"),
-    //     .target = target,
-    //     .optimize = optimize,
-    //     .imports = &.{.{ .name = "zigaudio", .module = lib_mod }},
-    // });
-    // const bench_file_exe = b.addExecutable(.{
-    //     .name = "bench_file",
-    //     .root_module = bench_file_mod,
-    // });
-    // b.installArtifact(bench_file_exe);
+    const build_bench_step = b.step("build-bench", "Build the bench binary");
+    build_bench_step.dependOn(&bench_exe.step);
+
+    const bench_run = b.addRunArtifact(bench_exe);
+    if (b.args) |args| bench_run.addArgs(args);
+    const bench_step = b.step("bench", "Run the bench example");
+    bench_step.dependOn(&bench_run.step);
 
     // Convert example
     const convert_mod = b.createModule(.{
