@@ -29,7 +29,7 @@ test "FLAC info" {
 
 test "FLAC decode full buffer" {
     var audio = try api.decodeMemory(testing.allocator, test_flac_data);
-    defer audio.deinit();
+    defer audio.deinit(testing.allocator);
 
     try testing.expectEqual(@as(u32, 44100), audio.params.sample_rate);
     try testing.expectEqual(@as(u8, 2), audio.params.channels);
@@ -39,19 +39,19 @@ test "FLAC decode full buffer" {
 
 test "FLAC decode matches WAV reference" {
     var flac_audio = try api.decodeMemory(testing.allocator, test_flac_data);
-    defer flac_audio.deinit();
+    defer flac_audio.deinit(testing.allocator);
 
     const wav_data = @embedFile("test-files/fanfare_heartcontainer.wav");
     var wav_audio = try api.decodeMemory(testing.allocator, wav_data);
-    defer wav_audio.deinit();
+    defer wav_audio.deinit(testing.allocator);
 
     try testing.expectEqual(wav_audio.data.len, flac_audio.data.len);
     try testing.expectEqualSlices(u8, wav_audio.data, flac_audio.data);
 }
 
 test "FLAC streaming reader" {
-    const decoder = try api.openMemory(testing.allocator, test_flac_data);
-    defer decoder.deinit();
+    const decoder = try api.fromMemory(testing.allocator, test_flac_data);
+    defer decoder.deinit(testing.allocator);
 
     try testing.expectEqual(@as(u32, 44100), decoder.info.sample_rate);
     try testing.expectEqual(@as(u8, 2), decoder.info.channels);

@@ -59,10 +59,9 @@ pub fn main() !void {
                 return;
             },
         };
-        defer pcm.deinit();
+        defer pcm.deinit(allocator);
 
         std.debug.print("Audio Info:\n", .{});
-        std.debug.print("  Format: {s}\n", .{@tagName(pcm.format_id)});
         std.debug.print("  Sample Rate: {d} Hz\n", .{pcm.params.sample_rate});
         std.debug.print("  Channels: {d}\n", .{pcm.params.channels});
         std.debug.print("  Sample Type: {s}\n", .{@tagName(pcm.params.sample_type)});
@@ -104,11 +103,11 @@ pub fn main() !void {
 
     std.debug.print("Opening {s}\n", .{path});
 
-    const decoder = try zigaudio.openFile(allocator, path);
-    defer decoder.deinit();
+    const stream = try zigaudio.fromPath(allocator, path);
+    defer stream.deinit(allocator);
 
-    const info = decoder.info;
-    const total_seconds_f = info.getDurationSeconds();
+    const info = stream.info;
+    const total_seconds_f = info.duration();
     const total_seconds: u64 = @intFromFloat(@floor(total_seconds_f));
 
     std.debug.print("Format: {d} Hz, {d} channels, {s}", .{
@@ -138,7 +137,7 @@ pub fn main() !void {
     defer context.deinit();
     context.waitForReady();
 
-    var decoder_reader = zigaudio.DecoderReader.init(decoder);
+    var decoder_reader = stream.reader();
     const player = try context.newPlayer(decoder_reader.reader());
     defer player.deinit();
 

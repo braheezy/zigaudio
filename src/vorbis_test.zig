@@ -29,7 +29,7 @@ test "Vorbis info" {
 
 test "Vorbis decode" {
     var audio = try api.decodeMemory(testing.allocator, test_vorbis_data);
-    defer audio.deinit();
+    defer audio.deinit(testing.allocator);
 
     try testing.expectEqual(@as(u32, 44100), audio.params.sample_rate);
     try testing.expectEqual(@as(u8, 2), audio.params.channels);
@@ -43,8 +43,8 @@ test "Vorbis decode" {
 }
 
 test "Vorbis streaming API" {
-    const decoder = try api.openMemory(testing.allocator, test_vorbis_data);
-    defer decoder.deinit();
+    const decoder = try api.fromMemory(testing.allocator, test_vorbis_data);
+    defer decoder.deinit(testing.allocator);
 
     try testing.expectEqual(@as(u32, 44100), decoder.info.sample_rate);
     try testing.expectEqual(@as(u8, 2), decoder.info.channels);
@@ -68,7 +68,7 @@ test "Vorbis error handling" {
 
 test "Vorbis decoded audio has signal" {
     var audio = try api.decodeMemory(testing.allocator, test_vorbis_data);
-    defer audio.deinit();
+    defer audio.deinit(testing.allocator);
 
     const samples = std.mem.bytesAsSlice(i16, audio.data);
     var non_zero: usize = 0;

@@ -236,12 +236,12 @@ fn decodeFloat(br: *BitReader, dst: []i16, bits_per_sample: u16) !void {
     }
 }
 
-fn decoderDeinit(decoder: *format.Decoder) void {
+fn decoderDeinit(decoder: *format.Decoder, allocator: std.mem.Allocator) void {
     const ctx: *WavDecoder = @ptrCast(@alignCast(decoder.context));
     ctx.br.deinit();
-    decoder.allocator.destroy(ctx.br);
-    decoder.allocator.destroy(ctx);
-    decoder.allocator.destroy(decoder);
+    allocator.destroy(ctx.br);
+    allocator.destroy(ctx);
+    allocator.destroy(decoder);
 }
 
 pub const decoder_vtable = format.DecoderVTable{
@@ -333,7 +333,6 @@ fn open(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
             .total_frames = total_frames,
             .duration_seconds = @as(f64, @floatFromInt(total_frames)) / @as(f64, @floatFromInt(metadata.sample_rate)),
         },
-        .allocator = allocator,
         .id = .wav,
     };
 

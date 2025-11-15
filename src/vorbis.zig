@@ -140,13 +140,13 @@ fn decoderRead(decoder: *format.Decoder, dst: []i16) !usize {
     return copy_count;
 }
 
-fn decoderDeinit(decoder: *format.Decoder) void {
+fn decoderDeinit(decoder: *format.Decoder, allocator: std.mem.Allocator) void {
     const ctx: *DecoderContext = @ptrCast(@alignCast(decoder.context));
     ctx.bit_reader.deinit();
-    ctx.allocator.destroy(ctx.bit_reader);
-    ctx.allocator.free(ctx.samples);
-    ctx.allocator.destroy(ctx);
-    decoder.allocator.destroy(decoder);
+    allocator.destroy(ctx.bit_reader);
+    allocator.free(ctx.samples);
+    allocator.destroy(ctx);
+    allocator.destroy(decoder);
 }
 
 const decoder_vtable = format.DecoderVTable{
@@ -155,7 +155,6 @@ const decoder_vtable = format.DecoderVTable{
 };
 
 const DecoderContext = struct {
-    allocator: std.mem.Allocator,
     samples: []i16,
     position: usize = 0,
     info: api.AudioInfo,
@@ -200,7 +199,6 @@ fn open(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
 
     const ctx = try allocator.create(DecoderContext);
     ctx.* = .{
-        .allocator = allocator,
         .samples = decoded.samples,
         .position = 0,
         .info = decoded.info,
@@ -212,7 +210,6 @@ fn open(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
         .vtable = &decoder_vtable,
         .context = ctx,
         .info = ctx.info,
-        .allocator = allocator,
         .id = .vorbis,
     };
     return decoder;

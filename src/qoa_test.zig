@@ -31,7 +31,7 @@ test "QOA info" {
 
 test "QOA decode" {
     var audio = try api.decodeMemory(testing.allocator, test_qoa_data);
-    defer audio.deinit();
+    defer audio.deinit(testing.allocator);
 
     try testing.expectEqual(@as(u32, 44100), audio.params.sample_rate);
     try testing.expectEqual(@as(u8, 2), audio.params.channels);
@@ -44,8 +44,8 @@ test "QOA decode" {
 }
 
 test "QOA streaming API" {
-    const decoder = try api.openMemory(testing.allocator, test_qoa_data);
-    defer decoder.deinit();
+    const decoder = try api.fromMemory(testing.allocator, test_qoa_data);
+    defer decoder.deinit(testing.allocator);
 
     try testing.expectEqual(@as(u32, 44100), decoder.info.sample_rate);
     try testing.expectEqual(@as(u8, 2), decoder.info.channels);
@@ -65,12 +65,12 @@ test "QOA error handling" {
     defer invalid_br.deinit();
     try testing.expectError(error.InvalidFormat, qoa.vtable.info(&invalid_br));
 
-    try testing.expectError(error.Unsupported, api.openMemory(testing.allocator, "not a qoa file"));
+    try testing.expectError(error.Unsupported, api.fromMemory(testing.allocator, "not a qoa file"));
 }
 
 fn decodeAll(allocator: std.mem.Allocator, data: []const u8) ![]i16 {
     var audio = try api.decodeMemory(allocator, data);
-    defer audio.deinit();
+    defer audio.deinit(testing.allocator);
 
     const samples = std.mem.bytesAsSlice(i16, audio.data);
     const copy = try allocator.alloc(i16, samples.len);
@@ -83,7 +83,7 @@ test "QOA encode from WAV decodes equal to golden" {
     const golden_qoa = @embedFile("test-files/fanfare_heartcontainer.qoa");
 
     var audio = try api.decodeMemory(testing.allocator, wav_bytes);
-    defer audio.deinit();
+    defer audio.deinit(testing.allocator);
 
     const out_path = "test_out.qoa";
     defer std.fs.cwd().deleteFile(out_path) catch {};
@@ -113,7 +113,7 @@ test "QOA encode from WAV matches golden bytes" {
     const golden_qoa = @embedFile("test-files/fanfare_heartcontainer.qoa");
 
     var audio = try api.decodeMemory(testing.allocator, wav_bytes);
-    defer audio.deinit();
+    defer audio.deinit(testing.allocator);
 
     const out_path = "test_out_exact.qoa";
     defer std.fs.cwd().deleteFile(out_path) catch {};

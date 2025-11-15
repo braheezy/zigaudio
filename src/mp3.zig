@@ -359,12 +359,11 @@ fn decoderRead(decoder: *format.Decoder, dst: []i16) !usize {
     return written;
 }
 
-fn decoderDeinit(decoder: *format.Decoder) void {
+fn decoderDeinit(decoder: *format.Decoder, allocator: std.mem.Allocator) void {
     const ctx: *Mp3Decoder = @ptrCast(@alignCast(decoder.context));
     if (ctx.prev_bits) |*b| b.vec.deinit();
-    ctx.pending.deinit(ctx.allocator);
+    ctx.pending.deinit(allocator);
     ctx.br.deinit();
-    const allocator = decoder.allocator;
     allocator.destroy(ctx.br);
     allocator.destroy(ctx);
     allocator.destroy(decoder);
@@ -417,7 +416,6 @@ fn open(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
             .total_frames = meta_info.total_frames,
             .duration_seconds = meta_info.duration_seconds,
         },
-        .allocator = allocator,
         .id = .mp3,
     };
 

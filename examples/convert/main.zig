@@ -20,7 +20,7 @@ pub fn main() !void {
     };
 
     var audio = try zigaudio.decodeFile(allocator, in_path);
-    defer audio.deinit();
+    defer audio.deinit(allocator);
 
     try zigaudio.encodeToPath(.wav, out_path, &audio);
 }

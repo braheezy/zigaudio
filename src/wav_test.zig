@@ -31,7 +31,7 @@ test "WAV info" {
 
 test "WAV decode" {
     var audio = try api.decodeMemory(testing.allocator, test_wav_data);
-    defer audio.deinit();
+    defer audio.deinit(testing.allocator);
 
     try testing.expectEqual(@as(u32, 44100), audio.params.sample_rate);
     try testing.expectEqual(@as(u8, 2), audio.params.channels);
@@ -43,8 +43,8 @@ test "WAV decode" {
 }
 
 test "WAV streaming API" {
-    const decoder = try api.openMemory(testing.allocator, test_wav_data);
-    defer decoder.deinit();
+    const decoder = try api.fromMemory(testing.allocator, test_wav_data);
+    defer decoder.deinit(testing.allocator);
 
     try testing.expectEqual(@as(u32, 44100), decoder.info.sample_rate);
     try testing.expectEqual(@as(u8, 2), decoder.info.channels);
@@ -68,7 +68,7 @@ test "WAV error handling" {
 
 test "WAV encode to writer" {
     var audio = try api.decodeMemory(testing.allocator, test_wav_data);
-    defer audio.deinit();
+    defer audio.deinit(testing.allocator);
 
     var buffer = std.ArrayList(u8).init(testing.allocator);
     defer buffer.deinit();

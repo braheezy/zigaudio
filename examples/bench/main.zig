@@ -40,11 +40,8 @@ pub fn main() !void {
     if (bytes_read != file_size) return error.IncompleteRead;
 
     // Decode from memory (this is what we're benchmarking)
-    const audio = try zigaudio.decodeMemory(allocator, file_data);
-    defer {
-        var mut_audio = audio;
-        mut_audio.deinit();
-    }
+    var audio = try zigaudio.decodeMemory(allocator, file_data);
+    defer audio.deinit(allocator);
 
     // Optionally output metrics (disabled by default for clean benchmarking)
     if (show_metrics) {
@@ -53,23 +50,12 @@ pub fn main() !void {
         var file_writer = stdout_file.writer(&stdout_buffer);
         const writer = &file_writer.interface;
 
-        const format_name = switch (audio.format_id) {
-            .qoa => "QOA",
-            .wav => "WAV",
-            .flac => "FLAC",
-            .mp3 => "MP3",
-            .aac => "AAC",
-            .vorbis => "Vorbis",
-            .unknown => "Unknown",
-        };
-
         const duration = audio.durationSeconds();
         const bitrate_kbps = if (duration > 0)
             @as(f64, @floatFromInt(file_size * 8)) / duration / 1000.0
         else
             0.0;
 
-        try writer.print("Format: {s}\n", .{format_name});
         try writer.print("Sample Rate: {d} Hz\n", .{audio.params.sample_rate});
         try writer.print("Channels: {d}\n", .{audio.params.channels});
         try writer.print("Sample Type: {s}\n", .{@tagName(audio.params.sample_type)});

@@ -355,9 +355,8 @@ fn decoderRead(decoder: *format.Decoder, dst: []i16) !usize {
     return written;
 }
 
-fn decoderDeinit(decoder: *format.Decoder) void {
+fn decoderDeinit(decoder: *format.Decoder, allocator: std.mem.Allocator) void {
     const ctx: *QoaContext = @ptrCast(@alignCast(decoder.context));
-    const allocator = decoder.allocator;
 
     ctx.br.deinit();
     allocator.destroy(ctx.br);
@@ -455,7 +454,6 @@ pub fn open(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
             .total_frames = header.total_frames,
             .duration_seconds = duration,
         },
-        .allocator = allocator,
         .id = .qoa,
     };
 

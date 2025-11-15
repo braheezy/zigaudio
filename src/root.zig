@@ -24,11 +24,7 @@ pub const ReadError = Error || std.mem.Allocator.Error || std.fs.File.ReadError 
 };
 
 ///! Error set for write/encode APIs.
-pub const WriteError = Error
-    || std.mem.Allocator.Error
-    || std.fs.File.OpenError
-    || std.fs.File.WriteError
-    || std.Io.Writer.Error;
+pub const WriteError = Error || std.mem.Allocator.Error || std.fs.File.OpenError || std.fs.File.WriteError || std.Io.Writer.Error;
 
 ///! Metadata about a decoded stream without requiring full decode.
 /// Contains the parameters players typically need to set up output.
@@ -49,7 +45,7 @@ pub const AudioInfo = struct {
     }
 
     ///! Returns duration in seconds, calculating from total_frames if duration_seconds is 0.
-    pub fn getDurationSeconds(self: AudioInfo) f64 {
+    pub fn duration(self: AudioInfo) f64 {
         if (self.duration_seconds > 0.0) return self.duration_seconds;
         if (self.sample_rate == 0 or self.total_frames == 0) return 0.0;
         return @as(f64, @floatFromInt(self.total_frames)) / @as(f64, @floatFromInt(self.sample_rate));
@@ -94,20 +90,20 @@ pub const AudioParams = struct {
     sample_type: SampleType,
 };
 
-///! Managed full-buffer PCM audio. Owns memory via allocator.
+///! Full-buffer PCM audio. Caller manages memory lifetime.
 pub const Audio = struct {
     params: AudioParams,
     data: []u8,
-    allocator: std.mem.Allocator,
-    format_id: format.Id,
 
-    pub fn initEmpty(allocator: std.mem.Allocator, params: AudioParams) Audio {
-        return .{ .params = params, .data = &.{}, .allocator = allocator, .format_id = .unknown };
+    pub fn deinit(self: *Audio, allocator: std.mem.Allocator) void {
+        if (self.data.len != 0) allocator.free(self.data);
+        self.* = .{ .params = self.params, .data = &.{} };
     }
 
-    pub fn deinit(self: *Audio) void {
-        if (self.data.len != 0) self.allocator.free(self.data);
-        self.* = .{ .params = self.params, .data = &.{}, .allocator = self.allocator, .format_id = self.format_id };
+    /// Get PCM samples as i16 slice (all formats decode to i16).
+    /// Samples are interleaved: [L, R, L, R, ...] for stereo.
+    pub fn samples(self: *const Audio) []i16 {
+        return std.mem.bytesAsSlice(i16, self.data);
     }
 
     pub fn frameBytes(self: *const Audio) usize {
@@ -124,27 +120,6 @@ pub const Audio = struct {
     }
 
     pub fn durationSeconds(self: *const Audio) f64 {
-        if (self.params.sample_rate == 0) return 0;
-        return @as(f64, @floatFromInt(self.frameCount())) / @as(f64, @floatFromInt(self.params.sample_rate));
-    }
-};
-
-///! Unmanaged PCM view. Caller controls lifetime of underlying memory.
-pub const AudioUnmanaged = struct {
-    params: AudioParams,
-    data: []const u8,
-
-    pub fn frameBytes(self: *const AudioUnmanaged) usize {
-        return (SampleFormat{ .sample_type = self.params.sample_type, .channel_count = self.params.channels }).bytesPerFrame();
-    }
-    pub fn frameCount(self: *const AudioUnmanaged) usize {
-        const fb = self.frameBytes();
-        return if (fb == 0) 0 else self.data.len / fb;
-    }
-    pub fn sampleCount(self: *const AudioUnmanaged) usize {
-        return self.frameCount() * self.params.channels;
-    }
-    pub fn durationSeconds(self: *const AudioUnmanaged) f64 {
         if (self.params.sample_rate == 0) return 0;
         return @as(f64, @floatFromInt(self.frameCount())) / @as(f64, @floatFromInt(self.params.sample_rate));
     }
@@ -227,8 +202,10 @@ pub const DecoderReader = struct {
     };
 };
 
-/// Open decoder from file path
-pub fn openFile(allocator: std.mem.Allocator, path: []const u8) !*Decoder {
+/// Create a streaming decoder from a file path with automatic format detection.
+/// The decoder can read PCM samples incrementally without loading the entire file.
+/// Returns a decoder that must be cleaned up with decoder.deinit(allocator).
+pub fn fromPath(allocator: std.mem.Allocator, path: []const u8) !*Decoder {
     const br = try allocator.create(BitReader);
     errdefer allocator.destroy(br);
 
@@ -238,8 +215,10 @@ pub fn openFile(allocator: std.mem.Allocator, path: []const u8) !*Decoder {
     return try format.openDecoder(allocator, br);
 }
 
-/// Open decoder from memory buffer
-pub fn openMemory(allocator: std.mem.Allocator, data: []const u8) !*Decoder {
+/// Create a streaming decoder from an in-memory buffer with automatic format detection.
+/// Useful for embedded audio or pre-loaded data.
+/// Returns a decoder that must be cleaned up with decoder.deinit(allocator).
+pub fn fromMemory(allocator: std.mem.Allocator, data: []const u8) !*Decoder {
     const br = try allocator.create(BitReader);
     errdefer allocator.destroy(br);
 
@@ -248,6 +227,10 @@ pub fn openMemory(allocator: std.mem.Allocator, data: []const u8) !*Decoder {
 
     return try format.openDecoder(allocator, br);
 }
+
+// Legacy aliases for backwards compatibility
+pub const openFile = fromPath;
+pub const openMemory = fromMemory;
 
 /// Probe file format without opening decoder
 pub fn probeFile(allocator: std.mem.Allocator, path: []const u8) !Id {
@@ -275,76 +258,22 @@ pub fn infoMemory(allocator: std.mem.Allocator, data: []const u8) !AudioInfo {
     return format.getInfo(&br);
 }
 
-/// Decode entire file into memory as i16 PCM
+/// Decode entire file into memory as i16 PCM.
+/// Convenience function that opens a decoder and reads all audio data.
+/// For streaming or partial decoding, use fromPath() and decoder methods instead.
 pub fn decodeFile(allocator: std.mem.Allocator, path: []const u8) !Audio {
-    const decoder = try openFile(allocator, path);
-    defer decoder.deinit();
-
-    const info = decoder.info;
-    const total_samples = if (info.total_frames > 0)
-        info.total_frames * @as(usize, info.channels)
-    else
-        4096 * @as(usize, info.channels); // Default buffer for unknown length
-
-    var samples = try std.ArrayList(i16).initCapacity(allocator, total_samples);
-    defer samples.deinit(allocator);
-
-    var chunk: [4096]i16 = undefined;
-    while (true) {
-        const n = try decoder.read(&chunk);
-        if (n == 0) break;
-        try samples.appendSlice(allocator, chunk[0..n]);
-    }
-
-    const data = try allocator.alloc(u8, samples.items.len * @sizeOf(i16));
-    @memcpy(data, std.mem.sliceAsBytes(samples.items));
-
-    return Audio{
-        .params = .{
-            .sample_rate = info.sample_rate,
-            .channels = info.channels,
-            .sample_type = .i16,
-        },
-        .data = data,
-        .allocator = allocator,
-        .format_id = decoder.id,
-    };
+    const decoder = try fromPath(allocator, path);
+    defer decoder.deinit(allocator);
+    return try decoder.toAudio(allocator);
 }
 
-/// Decode memory buffer into i16 PCM
+/// Decode memory buffer into i16 PCM.
+/// Convenience function that opens a decoder and reads all audio data.
+/// For streaming, use fromMemory() and decoder methods instead.
 pub fn decodeMemory(allocator: std.mem.Allocator, data: []const u8) !Audio {
-    const decoder = try openMemory(allocator, data);
-    defer decoder.deinit();
-
-    const info = decoder.info;
-    const total_samples = if (info.total_frames > 0)
-        info.total_frames * @as(usize, info.channels)
-    else
-        4096 * @as(usize, info.channels);
-
-    var samples = try std.ArrayList(i16).initCapacity(allocator, total_samples);
-    defer samples.deinit(allocator);
-
-    var chunk: [4096]i16 = undefined;
-    while (true) {
-        const n = try decoder.read(&chunk);
-        if (n == 0) break;
-        try samples.appendSlice(allocator, chunk[0..n]);
-    }
-
-    const pcm_data = try allocator.alloc(u8, samples.items.len * @sizeOf(i16));
-    @memcpy(pcm_data, std.mem.sliceAsBytes(samples.items));
-
-    return Audio{
-        .params = .{
-            .sample_rate = info.sample_rate,
-            .channels = info.channels,
-            .sample_type = .i16,
-        },
-        .data = pcm_data,
-        .allocator = allocator,
-        .format_id = decoder.id,
-    };
+    const decoder = try fromMemory(allocator, data);
+    defer decoder.deinit(allocator);
+    return try decoder.toAudio(allocator);
 }
 
 /// Encode managed audio to a file on disk using the requested format.

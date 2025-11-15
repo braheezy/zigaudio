@@ -21,7 +21,6 @@ const Metadata = struct {
 };
 
 const FlacDecoder = struct {
-    allocator: std.mem.Allocator,
     br: *BitReader,
     foxen_mem: []u8,
     foxen: *c.fx_flac_t,
@@ -289,15 +288,15 @@ fn decoderRead(dec: *format.Decoder, dst: []i16) !usize {
     return written;
 }
 
-fn decoderDeinit(dec: *format.Decoder) void {
+fn decoderDeinit(dec: *format.Decoder, allocator: std.mem.Allocator) void {
     const ctx: *FlacDecoder = @ptrCast(@alignCast(dec.context));
 
     ctx.br.deinit();
-    dec.allocator.destroy(ctx.br);
-    dec.allocator.free(ctx.sample_buffer);
-    dec.allocator.free(ctx.foxen_mem);
-    dec.allocator.destroy(ctx);
-    dec.allocator.destroy(dec);
+    allocator.destroy(ctx.br);
+    allocator.free(ctx.sample_buffer);
+    allocator.free(ctx.foxen_mem);
+    allocator.destroy(ctx);
+    allocator.destroy(dec);
 }
 
 const decoder_vtable = format.DecoderVTable{
@@ -319,7 +318,6 @@ fn flacOpen(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
     const ctx = try allocator.create(FlacDecoder);
     errdefer allocator.destroy(ctx);
     ctx.* = .{
-        .allocator = allocator,
         .br = br,
         .foxen_mem = foxen.mem,
         .foxen = foxen.decoder,
@@ -348,7 +346,6 @@ fn flacOpen(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
             .total_frames = total_frames,
             .duration_seconds = duration,
         },
-        .allocator = allocator,
         .id = .flac,
     };
 

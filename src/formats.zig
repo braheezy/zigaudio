@@ -27,7 +27,6 @@ pub const Decoder = struct {
     vtable: *const DecoderVTable,
     context: *anyopaque,
     info: api.AudioInfo,
-    allocator: std.mem.Allocator,
     id: Id,
 
     /// Read decoded PCM samples as interleaved i16
@@ -35,9 +34,87 @@ pub const Decoder = struct {
         return self.vtable.read(self, dst);
     }
 
+    /// Read decoded PCM frames into a byte buffer.
+    /// The buffer should be sized as: frames * channels * sizeof(i16)
+    /// Returns the number of frames read (not bytes).
+    pub fn readFramesInto(self: *Decoder, dst: []u8) !usize {
+        if (dst.len < 2) return 0; // Need at least one i16
+        const aligned_len = dst.len & ~@as(usize, 1); // Align to i16 boundary
+        const samples_slice: []i16 = @alignCast(std.mem.bytesAsSlice(i16, dst[0..aligned_len]));
+        const samples_read = try self.read(samples_slice);
+        return samples_read / @as(usize, self.info.channels);
+    }
+
+    /// Decode all remaining audio into a managed Audio buffer.
+    /// Returns an Audio struct that must be freed with audio.deinit(allocator).
+    pub fn toAudio(self: *Decoder, allocator: std.mem.Allocator) !api.Audio {
+        const total_samples = if (self.info.total_frames > 0)
+            self.info.total_frames * @as(usize, self.info.channels)
+        else
+            4096 * @as(usize, self.info.channels);
+
+        var samples = try std.ArrayList(i16).initCapacity(allocator, total_samples);
+        defer samples.deinit(allocator);
+
+        var chunk: [4096]i16 = undefined;
+        while (true) {
+            const n = try self.read(&chunk);
+            if (n == 0) break;
+            try samples.appendSlice(allocator, chunk[0..n]);
+        }
+
+        const data = try allocator.alloc(u8, samples.items.len * @sizeOf(i16));
+        @memcpy(data, std.mem.sliceAsBytes(samples.items));
+
+        return api.Audio{
+            .params = .{
+                .sample_rate = self.info.sample_rate,
+                .channels = self.info.channels,
+                .sample_type = .i16,
+            },
+            .data = data,
+        };
+    }
+
+    /// Decode up to max_frames into a managed Audio buffer.
+    /// Useful for loading previews or limiting memory usage.
+    /// Returns an Audio struct that must be freed with audio.deinit(allocator).
+    pub fn toAudioLimit(self: *Decoder, allocator: std.mem.Allocator, max_frames: usize) !api.Audio {
+        const max_samples = max_frames * @as(usize, self.info.channels);
+        var samples = try std.ArrayList(i16).initCapacity(allocator, max_samples);
+        defer samples.deinit(allocator);
+
+        var chunk: [4096]i16 = undefined;
+        while (samples.items.len < max_samples) {
+            const remaining = max_samples - samples.items.len;
+            const to_read = @min(chunk.len, remaining);
+            const n = try self.read(chunk[0..to_read]);
+            if (n == 0) break;
+            try samples.appendSlice(allocator, chunk[0..n]);
+        }
+
+        const data = try allocator.alloc(u8, samples.items.len * @sizeOf(i16));
+        @memcpy(data, std.mem.sliceAsBytes(samples.items));
+
+        return api.Audio{
+            .params = .{
+                .sample_rate = self.info.sample_rate,
+                .channels = self.info.channels,
+                .sample_type = .i16,
+            },
+            .data = data,
+        };
+    }
+
+    /// Get a std.Io.Reader interface for reading PCM data.
+    /// Useful for integration with audio playback libraries.
+    pub fn reader(self: *Decoder) api.DecoderReader {
+        return api.DecoderReader.init(self);
+    }
+
     /// Clean up decoder resources
-    pub fn deinit(self: *Decoder) void {
-        self.vtable.deinit(self);
+    pub fn deinit(self: *Decoder, allocator: std.mem.Allocator) void {
+        self.vtable.deinit(self, allocator);
     }
 
     /// Seek to frame position (optional, may return error.Unseekable)
@@ -52,7 +129,7 @@ pub const Decoder = struct {
 /// Function signatures for decoder operations
 pub const DecoderVTable = struct {
     read: *const fn (*Decoder, dst: []i16) anyerror!usize,
-    deinit: *const fn (*Decoder) void,
+    deinit: *const fn (*Decoder, allocator: std.mem.Allocator) void,
     seek: ?*const fn (*Decoder, frame: usize) anyerror!void = null,
 };
 

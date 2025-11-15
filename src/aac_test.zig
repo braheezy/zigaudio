@@ -28,7 +28,7 @@ test "AAC info" {
 
 test "AAC decode" {
     var audio = try api.decodeMemory(testing.allocator, test_aac_data);
-    defer audio.deinit();
+    defer audio.deinit(testing.allocator);
 
     try testing.expectEqual(@as(u32, 44100), audio.params.sample_rate);
     try testing.expectEqual(@as(u8, 2), audio.params.channels);
@@ -37,8 +37,8 @@ test "AAC decode" {
 }
 
 test "AAC streaming API" {
-    const decoder = try api.openMemory(testing.allocator, test_aac_data);
-    defer decoder.deinit();
+    const decoder = try api.fromMemory(testing.allocator, test_aac_data);
+    defer decoder.deinit(testing.allocator);
 
     try testing.expectEqual(@as(u32, 44100), decoder.info.sample_rate);
     try testing.expectEqual(@as(u8, 2), decoder.info.channels);

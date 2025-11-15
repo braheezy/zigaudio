@@ -5,8 +5,8 @@
     .minimum_zig_version = "0.15.1",
     .dependencies = .{
         .zoto = .{
-            .url = "git+https://github.com/braheezy/zoto#b05da148128c23eb5f5a3ee6aa969ec9ad096b5c",
-            .hash = "zoto-0.1.0-Eh0DjENKAQAPNsfpWxHIcMQP8QoAch0qqn0LgTUCc0XI",
+            .url = "git+https://github.com/braheezy/zoto#58aa6443c072a92318e4b04eeee053eebe761f74",
+            .hash = "zoto-0.1.0-Eh0DjNOsAQCcXq1r9R4XeM1RKUzUocgmQxLn3F359rCG",
         },
         .faad2 = .{
             .url = "git+https://github.com/braheezy/faad2.git#f6bbda75bb5d029696b4ec94e39d8d691f47dfe1",
