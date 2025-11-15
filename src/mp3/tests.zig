@@ -65,7 +65,7 @@ test "MP3 open + streaming" {
         destroyBitReader(br_ptr);
         return err;
     };
-    defer decoder.deinit();
+    defer decoder.deinit(allocator);
 
     try testing.expectEqual(@as(u32, 44100), decoder.info.sample_rate);
     try testing.expectEqual(@as(u8, 2), decoder.info.channels);
@@ -79,7 +79,7 @@ test "MP3 open + streaming" {
 
 test "MP3 decodeMemory" {
     var audio = try api.decodeMemory(testing.allocator, test_mp3_data);
-    defer audio.deinit();
+    defer audio.deinit(testing.allocator);
 
     try testing.expectEqual(@as(u32, 44100), audio.params.sample_rate);
     try testing.expectEqual(@as(u8, 2), audio.params.channels);

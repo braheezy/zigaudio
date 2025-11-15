@@ -283,10 +283,9 @@ pub fn encodeToPath(id: Id, path: []const u8, audio: *const Audio) WriteError!vo
 
     var buffer: [4096]u8 = undefined;
     var file_writer = file.writer(&buffer);
-    const writer = &file_writer.interface;
 
-    try format.encode(id, writer, audio);
-    try writer.flush();
+    try format.encode(id, &file_writer.interface, audio);
+    try file_writer.interface.flush();
 }
 
 test {

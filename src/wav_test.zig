@@ -66,21 +66,22 @@ test "WAV error handling" {
     try testing.expectError(error.InvalidFormat, wav.vtable.info(&invalid_br));
 }
 
-test "WAV encode to writer" {
+test "WAV encode to file" {
     var audio = try api.decodeMemory(testing.allocator, test_wav_data);
     defer audio.deinit(testing.allocator);
 
-    var buffer = std.ArrayList(u8).init(testing.allocator);
-    defer buffer.deinit();
+    const temp_path = "test_output.wav";
+    defer std.fs.cwd().deleteFile(temp_path) catch {};
 
-    var writer_adapter = std.Io.Writer.fromArrayList(&buffer);
-    const writer = &writer_adapter.interface;
+    try api.encodeToPath(.wav, temp_path, &audio);
 
-    const encode_fn = wav.vtable.encode orelse unreachable;
-    try encode_fn(writer, &audio);
-    try writer.flush();
+    // Verify the file was created and has valid WAV structure
+    const file = try std.fs.cwd().openFile(temp_path, .{});
+    defer file.close();
 
-    try testing.expect(buffer.items.len > 44);
-    try testing.expectEqualSlices(u8, "RIFF", buffer.items[0..4]);
-    try testing.expectEqualSlices(u8, "WAVE", buffer.items[8..12]);
+    var header: [44]u8 = undefined;
+    const bytes_read = try file.readAll(&header);
+    try testing.expect(bytes_read >= 44);
+    try testing.expectEqualSlices(u8, "RIFF", header[0..4]);
+    try testing.expectEqualSlices(u8, "WAVE", header[8..12]);
 }
