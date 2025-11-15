@@ -15,12 +15,12 @@ A Zig library for reading and writing audio files with a streaming-capable, form
 
 **Note:** All formats decode to i16 PCM. WAV encoding supports i16 PCM output only.
 
-## Installation
+## Usage
 
 Add to your `build.zig.zon`:
 
 ```bash
-zig fetch --save git+https://github.com/braheezy/zig-audio
+zig fetch --save git+https://github.com/braheezy/zig-audio#0.1.0
 ```
 
 And in your `build.zig`:
