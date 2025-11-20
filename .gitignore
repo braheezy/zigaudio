@@ -7,3 +7,4 @@ references
 /*.ogg
 /*.mp3
 /*.flac
+.claude/settings.local.json
