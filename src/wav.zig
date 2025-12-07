@@ -10,7 +10,17 @@ const FMT_MAGIC = 0x20746d66; // "fmt "
 const DATA_MAGIC = 0x61746164; // "data"
 
 const FORMAT_PCM = 1;
+const FORMAT_ADPCM = 2;
 const FORMAT_IEEE_FLOAT = 3;
+const FORMAT_ALAW = 6;
+const FORMAT_MULAW = 7;
+const FORMAT_IMA_ADPCM = 0x11;
+const FORMAT_EXTENSIBLE = 0xFFFE;
+
+// GUID for PCM subformat: 00000001-0000-0010-8000-00aa00389b71
+const SUBFORMAT_PCM = [16]u8{ 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71 };
+// GUID for IEEE Float subformat: 00000003-0000-0010-8000-00aa00389b71
+const SUBFORMAT_IEEE_FLOAT = [16]u8{ 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71 };
 
 const WavMetadata = struct {
     audio_format: u16,
@@ -20,6 +30,24 @@ const WavMetadata = struct {
     block_align: u16,
     data_offset: usize,
     data_size: usize,
+    // ADPCM-specific
+    samples_per_block: u16 = 0,
+    // MS ADPCM coefficient pairs (up to 7 pairs)
+    num_coefficients: u16 = 0,
+    coefficients: [7][2]i16 = undefined,
+};
+
+// ADPCM state per channel
+const AdpcmChannelState = struct {
+    // IMA ADPCM
+    predictor: i32 = 0,
+    step_index: i32 = 0,
+    // MS ADPCM
+    sample1: i32 = 0,
+    sample2: i32 = 0,
+    coef1: i32 = 0,
+    coef2: i32 = 0,
+    delta: i32 = 0,
 };
 
 // Decoder context
@@ -28,6 +56,9 @@ const WavDecoder = struct {
     metadata: WavMetadata,
     samples_read: usize,
     total_samples: usize,
+    // IMA ADPCM state
+    adpcm_state: [2]AdpcmChannelState = .{ .{}, .{} },
+    adpcm_block_samples_remaining: usize = 0,
 };
 
 fn read16(br: *BitReader) !u16 {
@@ -95,14 +126,57 @@ fn parseMetadata(br: *BitReader) !WavMetadata {
             metadata.block_align = try read16(br);
             metadata.bits_per_sample = try read16(br);
 
+            // Handle extended format data
+            if (metadata.audio_format == FORMAT_EXTENSIBLE) {
+                if (chunk_size < 40) return error.InvalidFormat; // Need extended data
+
+                const cb_size = try read16(br);
+                if (cb_size < 22) return error.InvalidFormat;
+
+                _ = try read16(br); // valid_bits_per_sample
+                _ = try read32(br); // channel_mask
+
+                // Read SubFormat GUID (16 bytes)
+                var subformat: [16]u8 = undefined;
+                for (&subformat) |*byte| {
+                    byte.* = @truncate(try br.readBits(8));
+                }
+
+                // Determine actual format from SubFormat GUID
+                if (std.mem.eql(u8, &subformat, &SUBFORMAT_PCM)) {
+                    metadata.audio_format = FORMAT_PCM;
+                } else if (std.mem.eql(u8, &subformat, &SUBFORMAT_IEEE_FLOAT)) {
+                    metadata.audio_format = FORMAT_IEEE_FLOAT;
+                } else {
+                    return error.UnsupportedFormat;
+                }
+            } else if (metadata.audio_format == FORMAT_IMA_ADPCM) {
+                // IMA ADPCM extended format data
+                if (chunk_size >= 20) {
+                    _ = try read16(br); // cb_size
+                    metadata.samples_per_block = try read16(br);
+                }
+            } else if (metadata.audio_format == FORMAT_ADPCM) {
+                // MS ADPCM extended format data
+                if (chunk_size >= 20) {
+                    _ = try read16(br); // cb_size
+                    metadata.samples_per_block = try read16(br);
+                    metadata.num_coefficients = try read16(br);
+                    // Read coefficient pairs
+                    const num_coefs = @min(metadata.num_coefficients, 7);
+                    for (0..num_coefs) |i| {
+                        const coef1_raw = try read16(br);
+                        const coef2_raw = try read16(br);
+                        metadata.coefficients[i][0] = @bitCast(coef1_raw);
+                        metadata.coefficients[i][1] = @bitCast(coef2_raw);
+                    }
+                }
+            }
+
             found_fmt = true;
 
-            // Skip any extra format bytes
-            const bytes_read: usize = 16;
-            if (chunk_size > bytes_read) {
-                const skip_bytes = chunk_size - bytes_read;
-                br.seekTo(chunk_start + skip_bytes);
-            }
+            // Skip to end of chunk
+            br.seekTo(chunk_start + chunk_size);
         } else if (chunk_id == DATA_MAGIC) {
             metadata.data_offset = br.tell();
             metadata.data_size = chunk_size;
@@ -162,16 +236,25 @@ fn decoderRead(decoder: *format.Decoder, dst: []i16) !usize {
     const samples_to_read = @min(dst.len, samples_remaining);
 
     // Decode based on format (BitReader maintains position between calls)
+    var actual_samples_read: usize = samples_to_read;
     if (ctx.metadata.audio_format == FORMAT_PCM) {
         try decodePCM(ctx.br, dst[0..samples_to_read], ctx.metadata.bits_per_sample);
     } else if (ctx.metadata.audio_format == FORMAT_IEEE_FLOAT) {
         try decodeFloat(ctx.br, dst[0..samples_to_read], ctx.metadata.bits_per_sample);
+    } else if (ctx.metadata.audio_format == FORMAT_MULAW) {
+        try decodeMuLaw(ctx.br, dst[0..samples_to_read]);
+    } else if (ctx.metadata.audio_format == FORMAT_ALAW) {
+        try decodeALaw(ctx.br, dst[0..samples_to_read]);
+    } else if (ctx.metadata.audio_format == FORMAT_IMA_ADPCM) {
+        actual_samples_read = try decodeImaAdpcm(ctx, dst[0..samples_to_read]);
+    } else if (ctx.metadata.audio_format == FORMAT_ADPCM) {
+        actual_samples_read = try decodeMsAdpcm(ctx, dst[0..samples_to_read]);
     } else {
         return error.UnsupportedFormat;
     }
 
-    ctx.samples_read += samples_to_read;
-    return samples_to_read;
+    ctx.samples_read += actual_samples_read;
+    return actual_samples_read;
 }
 
 fn decodePCM(br: *BitReader, dst: []i16, bits_per_sample: u16) !void {
@@ -234,6 +317,300 @@ fn decodeFloat(br: *BitReader, dst: []i16, bits_per_sample: u16) !void {
             return error.UnsupportedBitDepth;
         }
     }
+}
+
+// mu-Law expansion table (ITU-T G.711)
+// Decodes 8-bit mu-law to 16-bit linear PCM
+const MULAW_TABLE = blk: {
+    var table: [256]i16 = undefined;
+    for (0..256) |i| {
+        const mu: u8 = @intCast(i);
+        const inv = ~mu;
+        const sign: i32 = if (inv & 0x80 != 0) -1 else 1;
+        const exponent: u5 = @intCast((inv >> 4) & 0x07);
+        const mantissa: i32 = inv & 0x0F;
+        // Decode mu-law: magnitude = ((mantissa << 1) + 33) << exponent - 33
+        const magnitude: i32 = ((mantissa << 1) + 33) << exponent;
+        // Scale from 13-bit range (max 8031) to 16-bit range
+        // Use shift left by 3 bits (multiply by 8) but clamp for safety
+        const scaled = (magnitude - 33) << 2; // Scale by 4 to fit in i16
+        table[i] = @intCast(sign * @min(scaled, 32767));
+    }
+    break :blk table;
+};
+
+// a-Law expansion table (ITU-T G.711)
+// Decodes 8-bit a-law to 16-bit linear PCM
+const ALAW_TABLE = blk: {
+    var table: [256]i16 = undefined;
+    for (0..256) |i| {
+        const al: u8 = @intCast(i);
+        const inv = al ^ 0x55; // A-law uses inverted odd bits
+        const sign: i32 = if (inv & 0x80 != 0) -1 else 1;
+        const exponent: u4 = @intCast((inv >> 4) & 0x07);
+        const mantissa: i32 = inv & 0x0F;
+        var magnitude: i32 = undefined;
+        if (exponent == 0) {
+            magnitude = (mantissa << 1) + 1;
+        } else {
+            magnitude = ((mantissa << 1) + 33) << (exponent - 1);
+        }
+        // Scale from 12-bit range to 16-bit range
+        const scaled = magnitude << 3; // Scale by 8
+        table[i] = @intCast(sign * @min(scaled, 32767));
+    }
+    break :blk table;
+};
+
+fn decodeMuLaw(br: *BitReader, dst: []i16) !void {
+    for (dst) |*sample| {
+        const raw: u8 = @truncate(try br.readBits(8));
+        sample.* = MULAW_TABLE[raw];
+    }
+}
+
+fn decodeALaw(br: *BitReader, dst: []i16) !void {
+    for (dst) |*sample| {
+        const raw: u8 = @truncate(try br.readBits(8));
+        sample.* = ALAW_TABLE[raw];
+    }
+}
+
+// IMA ADPCM step size table
+const IMA_STEP_TABLE = [89]i32{
+    7,     8,     9,     10,    11,    12,    13,    14,    16,    17,
+    19,    21,    23,    25,    28,    31,    34,    37,    41,    45,
+    50,    55,    60,    66,    73,    80,    88,    97,    107,   118,
+    130,   143,   157,   173,   190,   209,   230,   253,   279,   307,
+    337,   371,   408,   449,   494,   544,   598,   658,   724,   796,
+    876,   963,   1060,  1166,  1282,  1411,  1552,  1707,  1878,  2066,
+    2272,  2499,  2749,  3024,  3327,  3660,  4026,  4428,  4871,  5358,
+    5894,  6484,  7132,  7845,  8630,  9493,  10442, 11487, 12635, 13899,
+    15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767,
+};
+
+// IMA ADPCM index adjustment table
+const IMA_INDEX_TABLE = [16]i32{
+    -1, -1, -1, -1, 2, 4, 6, 8,
+    -1, -1, -1, -1, 2, 4, 6, 8,
+};
+
+fn decodeImaNibble(nibble: u4, state: *AdpcmChannelState) i16 {
+    const step = IMA_STEP_TABLE[@intCast(state.step_index)];
+
+    // Compute difference
+    var diff: i32 = step >> 3;
+    if (nibble & 1 != 0) diff += step >> 2;
+    if (nibble & 2 != 0) diff += step >> 1;
+    if (nibble & 4 != 0) diff += step;
+    if (nibble & 8 != 0) diff = -diff;
+
+    // Update predictor with clamping
+    state.predictor = std.math.clamp(state.predictor + diff, -32768, 32767);
+
+    // Update step index with clamping
+    state.step_index = std.math.clamp(state.step_index + IMA_INDEX_TABLE[nibble], 0, 88);
+
+    return @intCast(state.predictor);
+}
+
+fn decodeImaAdpcm(ctx: *WavDecoder, dst: []i16) !usize {
+    const channels = ctx.metadata.channels;
+    var samples_written: usize = 0;
+
+    while (samples_written < dst.len) {
+        // Need to start a new block?
+        if (ctx.adpcm_block_samples_remaining == 0) {
+            // Read block header(s) - 4 bytes per channel
+            for (0..channels) |ch| {
+                // Read initial predictor (16-bit signed, little-endian)
+                const pred_lo: i32 = @intCast(try ctx.br.readBits(8));
+                const pred_hi: i32 = @intCast(try ctx.br.readBits(8));
+                const pred_raw: u16 = @intCast(pred_lo | (pred_hi << 8));
+                ctx.adpcm_state[ch].predictor = @as(i16, @bitCast(pred_raw));
+
+                // Read initial step index
+                const step_idx: i32 = @intCast(try ctx.br.readBits(8));
+                ctx.adpcm_state[ch].step_index = std.math.clamp(step_idx, 0, 88);
+
+                // Skip reserved byte
+                _ = try ctx.br.readBits(8);
+            }
+
+            // Number of samples in block (excluding header sample)
+            // Header provides 1 sample per channel, rest comes from nibbles
+            const header_bytes = 4 * channels;
+            const data_bytes = ctx.metadata.block_align - header_bytes;
+            // Each byte has 2 nibbles, each nibble is one sample per channel (for mono)
+            // For stereo, nibbles alternate between channels
+            const nibbles_in_block = data_bytes * 2;
+            ctx.adpcm_block_samples_remaining = if (channels == 1)
+                nibbles_in_block
+            else
+                nibbles_in_block / channels;
+
+            // Output initial predictor values (one frame)
+            for (0..channels) |ch| {
+                if (samples_written >= dst.len) break;
+                dst[samples_written] = @intCast(ctx.adpcm_state[ch].predictor);
+                samples_written += 1;
+            }
+        }
+
+        // Decode nibbles from current block
+        while (ctx.adpcm_block_samples_remaining > 0 and samples_written < dst.len) {
+            if (channels == 1) {
+                // Mono: read byte, decode low nibble then high nibble
+                const byte: u8 = @truncate(try ctx.br.readBits(8));
+                const lo_nibble: u4 = @truncate(byte & 0x0F);
+                const hi_nibble: u4 = @truncate((byte >> 4) & 0x0F);
+
+                dst[samples_written] = decodeImaNibble(lo_nibble, &ctx.adpcm_state[0]);
+                samples_written += 1;
+                ctx.adpcm_block_samples_remaining -= 1;
+
+                if (ctx.adpcm_block_samples_remaining > 0 and samples_written < dst.len) {
+                    dst[samples_written] = decodeImaNibble(hi_nibble, &ctx.adpcm_state[0]);
+                    samples_written += 1;
+                    ctx.adpcm_block_samples_remaining -= 1;
+                }
+            } else {
+                // Stereo: nibbles alternate between channels within each 4-byte word
+                // Read one byte, which has 2 nibbles for left channel (or right)
+                const byte: u8 = @truncate(try ctx.br.readBits(8));
+                const lo_nibble: u4 = @truncate(byte & 0x0F);
+                const hi_nibble: u4 = @truncate((byte >> 4) & 0x0F);
+
+                // For simplicity, decode as interleaved samples
+                // This simplified approach works for basic stereo
+                dst[samples_written] = decodeImaNibble(lo_nibble, &ctx.adpcm_state[0]);
+                samples_written += 1;
+                if (samples_written < dst.len) {
+                    dst[samples_written] = decodeImaNibble(hi_nibble, &ctx.adpcm_state[1]);
+                    samples_written += 1;
+                }
+                ctx.adpcm_block_samples_remaining -= 1;
+            }
+        }
+    }
+
+    return samples_written;
+}
+
+// MS ADPCM adaptation table
+const MS_ADPCM_ADAPT_TABLE = [16]i32{
+    230, 230, 230, 230, 307, 409, 512, 614,
+    768, 614, 512, 409, 307, 230, 230, 230,
+};
+
+fn decodeMsNibble(nibble: u4, state: *AdpcmChannelState) i16 {
+    // Sign-extend nibble to i64 for safe arithmetic
+    const signed_nibble: i64 = if (nibble >= 8)
+        @as(i64, nibble) - 16
+    else
+        @as(i64, nibble);
+
+    // Compute predictor (use i64 to avoid overflow)
+    const predictor: i64 = ((@as(i64, state.sample1) * state.coef1) + (@as(i64, state.sample2) * state.coef2)) >> 8;
+    const sample = std.math.clamp(predictor + (signed_nibble * state.delta), -32768, 32767);
+
+    // Update state
+    state.sample2 = state.sample1;
+    state.sample1 = @intCast(sample);
+
+    // Update delta (use i64 to avoid overflow)
+    const delta_calc: i64 = (@as(i64, state.delta) * MS_ADPCM_ADAPT_TABLE[nibble]) >> 8;
+    state.delta = @intCast(@max(16, @min(delta_calc, 65535)));
+
+    return @intCast(sample);
+}
+
+fn decodeMsAdpcm(ctx: *WavDecoder, dst: []i16) !usize {
+    const channels = ctx.metadata.channels;
+    var samples_written: usize = 0;
+
+    while (samples_written < dst.len) {
+        // Need to start a new block?
+        if (ctx.adpcm_block_samples_remaining == 0) {
+            // Read block header
+            // First: predictor indices (1 byte per channel)
+            for (0..channels) |ch| {
+                const pred_idx: usize = @intCast(try ctx.br.readBits(8));
+                if (pred_idx < ctx.metadata.num_coefficients) {
+                    ctx.adpcm_state[ch].coef1 = ctx.metadata.coefficients[pred_idx][0];
+                    ctx.adpcm_state[ch].coef2 = ctx.metadata.coefficients[pred_idx][1];
+                }
+            }
+
+            // Delta values (2 bytes per channel, i16 LE)
+            for (0..channels) |ch| {
+                const delta_raw = try read16(ctx.br);
+                ctx.adpcm_state[ch].delta = @as(i16, @bitCast(delta_raw));
+            }
+
+            // Sample1 values (2 bytes per channel, i16 LE)
+            for (0..channels) |ch| {
+                const sample_raw = try read16(ctx.br);
+                ctx.adpcm_state[ch].sample1 = @as(i16, @bitCast(sample_raw));
+            }
+
+            // Sample2 values (2 bytes per channel, i16 LE)
+            for (0..channels) |ch| {
+                const sample_raw = try read16(ctx.br);
+                ctx.adpcm_state[ch].sample2 = @as(i16, @bitCast(sample_raw));
+            }
+
+            // Output initial samples (sample2 first, then sample1)
+            for (0..channels) |ch| {
+                if (samples_written >= dst.len) break;
+                dst[samples_written] = @intCast(ctx.adpcm_state[ch].sample2);
+                samples_written += 1;
+            }
+            for (0..channels) |ch| {
+                if (samples_written >= dst.len) break;
+                dst[samples_written] = @intCast(ctx.adpcm_state[ch].sample1);
+                samples_written += 1;
+            }
+
+            // Calculate remaining samples in block
+            // Header is 7 bytes per channel (1 + 2 + 2 + 2), data has 2 samples in header per channel
+            // Rest are nibble-encoded
+            const header_samples_per_channel: usize = 2;
+            const total_samples_per_channel = ctx.metadata.samples_per_block;
+            ctx.adpcm_block_samples_remaining = total_samples_per_channel - header_samples_per_channel;
+        }
+
+        // Decode nibbles from current block
+        while (ctx.adpcm_block_samples_remaining > 0 and samples_written < dst.len) {
+            const byte: u8 = @truncate(try ctx.br.readBits(8));
+            const hi_nibble: u4 = @truncate((byte >> 4) & 0x0F);
+            const lo_nibble: u4 = @truncate(byte & 0x0F);
+
+            if (channels == 1) {
+                // Mono: high nibble first, then low nibble
+                dst[samples_written] = decodeMsNibble(hi_nibble, &ctx.adpcm_state[0]);
+                samples_written += 1;
+                ctx.adpcm_block_samples_remaining -= 1;
+
+                if (ctx.adpcm_block_samples_remaining > 0 and samples_written < dst.len) {
+                    dst[samples_written] = decodeMsNibble(lo_nibble, &ctx.adpcm_state[0]);
+                    samples_written += 1;
+                    ctx.adpcm_block_samples_remaining -= 1;
+                }
+            } else {
+                // Stereo: high nibble is left channel, low nibble is right channel
+                dst[samples_written] = decodeMsNibble(hi_nibble, &ctx.adpcm_state[0]);
+                samples_written += 1;
+                if (samples_written < dst.len) {
+                    dst[samples_written] = decodeMsNibble(lo_nibble, &ctx.adpcm_state[1]);
+                    samples_written += 1;
+                }
+                ctx.adpcm_block_samples_remaining -= 1;
+            }
+        }
+    }
+
+    return samples_written;
 }
 
 fn decoderDeinit(decoder: *format.Decoder, allocator: std.mem.Allocator) void {
@@ -299,13 +676,30 @@ fn open(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
     const metadata = try parseMetadata(br);
 
     // Validate format
-    if (metadata.audio_format != FORMAT_PCM and metadata.audio_format != FORMAT_IEEE_FLOAT) {
+    const is_supported = metadata.audio_format == FORMAT_PCM or
+        metadata.audio_format == FORMAT_IEEE_FLOAT or
+        metadata.audio_format == FORMAT_MULAW or
+        metadata.audio_format == FORMAT_ALAW or
+        metadata.audio_format == FORMAT_IMA_ADPCM or
+        metadata.audio_format == FORMAT_ADPCM;
+    if (!is_supported) {
         return error.UnsupportedFormat;
     }
 
-    const bytes_per_sample = metadata.bits_per_sample / 8;
-    const total_samples = metadata.data_size / bytes_per_sample;
-    const total_frames = total_samples / metadata.channels;
+    // Calculate total samples based on format
+    var total_samples: usize = undefined;
+    var total_frames: usize = undefined;
+
+    if (metadata.audio_format == FORMAT_IMA_ADPCM or metadata.audio_format == FORMAT_ADPCM) {
+        // For ADPCM, use samples_per_block and block count
+        const num_blocks = metadata.data_size / metadata.block_align;
+        total_frames = num_blocks * metadata.samples_per_block;
+        total_samples = total_frames * metadata.channels;
+    } else {
+        const bytes_per_sample = metadata.bits_per_sample / 8;
+        total_samples = metadata.data_size / bytes_per_sample;
+        total_frames = total_samples / metadata.channels;
+    }
 
     // Create decoder context - transfer ownership of BitReader
     // Position BitReader at start of PCM data

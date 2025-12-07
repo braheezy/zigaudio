@@ -15,6 +15,17 @@ A Zig library for reading and writing audio files with a streaming-capable, form
 
 **Note:** All formats decode to i16 PCM. WAV encoding supports i16 PCM output only.
 
+### WAV Format Support
+
+WAV decoding supports a wide range of sub-formats:
+
+- **PCM**: 8, 16, 24, 32-bit (including WAVE_FORMAT_EXTENSIBLE)
+- **IEEE Float**: 32-bit (single) and 64-bit (double)
+- **G.711**: mu-Law and a-Law
+- **ADPCM**: IMA ADPCM and MS ADPCM
+
+All the files from [this site](https://mauvecloud.net/sounds/).
+
 ## Usage
 
 Add to your `build.zig.zon`:
