@@ -93,17 +93,17 @@ pub const AudioParams = struct {
 ///! Full-buffer PCM audio. Caller manages memory lifetime.
 pub const Audio = struct {
     params: AudioParams,
-    data: []u8,
+    data: []align(@alignOf(f32)) u8,
 
     pub fn deinit(self: *Audio, allocator: std.mem.Allocator) void {
         if (self.data.len != 0) allocator.free(self.data);
         self.* = .{ .params = self.params, .data = &.{} };
     }
 
-    /// Get PCM samples as i16 slice (all formats decode to i16).
-    /// Samples are interleaved: [L, R, L, R, ...] for stereo.
-    pub fn samples(self: *const Audio) []i16 {
-        return std.mem.bytesAsSlice(i16, self.data);
+    /// Get PCM samples as f32 slice (all formats decode to f32).
+    /// Samples are interleaved: [L, R, L, R, ...] for stereo, in range [-1.0, 1.0].
+    pub fn samples(self: *const Audio) []f32 {
+        return std.mem.bytesAsSlice(f32, self.data);
     }
 
     pub fn frameBytes(self: *const Audio) usize {
@@ -153,12 +153,12 @@ pub const DecoderReader = struct {
 
         var total: usize = 0;
         for (vecs) |vec| {
-            // Align to i16 boundary
-            const aligned_len = vec.len & ~@as(usize, 1);
+            // Align to f32 boundary
+            const aligned_len = vec.len & ~@as(usize, 3);
             if (aligned_len == 0) continue;
 
-            const aligned_slice: []align(@alignOf(i16)) u8 = @alignCast(vec[0..aligned_len]);
-            const samples = std.mem.bytesAsSlice(i16, aligned_slice);
+            const aligned_slice: []align(@alignOf(f32)) u8 = @alignCast(vec[0..aligned_len]);
+            const samples = std.mem.bytesAsSlice(f32, aligned_slice);
             const n = self.decoder.read(samples) catch |e| switch (e) {
                 else => return error.ReadFailed,
             };
@@ -167,7 +167,7 @@ pub const DecoderReader = struct {
                 break;
             }
 
-            total += n * @sizeOf(i16);
+            total += n * @sizeOf(f32);
             if (n < samples.len) break; // EOF after partial read
         }
 
@@ -258,7 +258,7 @@ pub fn infoMemory(allocator: std.mem.Allocator, data: []const u8) !AudioInfo {
     return format.getInfo(&br);
 }
 
-/// Decode entire file into memory as i16 PCM.
+/// Decode entire file into memory as f32 PCM.
 /// Convenience function that opens a decoder and reads all audio data.
 /// For streaming or partial decoding, use fromPath() and decoder methods instead.
 pub fn decodeFile(allocator: std.mem.Allocator, path: []const u8) !Audio {
@@ -267,7 +267,7 @@ pub fn decodeFile(allocator: std.mem.Allocator, path: []const u8) !Audio {
     return try decoder.toAudio(allocator);
 }
 
-/// Decode memory buffer into i16 PCM.
+/// Decode memory buffer into f32 PCM.
 /// Convenience function that opens a decoder and reads all audio data.
 /// For streaming, use fromMemory() and decoder methods instead.
 pub fn decodeMemory(allocator: std.mem.Allocator, data: []const u8) !Audio {

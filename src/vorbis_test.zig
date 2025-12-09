@@ -23,7 +23,7 @@ test "Vorbis info" {
     const info = try vorbis.vtable.info(&br);
     try testing.expectEqual(@as(u32, 44100), info.sample_rate);
     try testing.expectEqual(@as(u8, 2), info.channels);
-    try testing.expectEqual(api.SampleType.i16, info.sample_type);
+    try testing.expectEqual(api.SampleType.f32, info.sample_type);
     try testing.expect(info.total_frames > 0);
 }
 
@@ -33,7 +33,7 @@ test "Vorbis decode" {
 
     try testing.expectEqual(@as(u32, 44100), audio.params.sample_rate);
     try testing.expectEqual(@as(u8, 2), audio.params.channels);
-    try testing.expectEqual(api.SampleType.i16, audio.params.sample_type);
+    try testing.expectEqual(api.SampleType.f32, audio.params.sample_type);
     try testing.expect(audio.data.len > 0);
 
     const samples = audio.frameCount();
@@ -48,7 +48,7 @@ test "Vorbis streaming API" {
 
     try testing.expectEqual(@as(u32, 44100), decoder.info.sample_rate);
     try testing.expectEqual(@as(u8, 2), decoder.info.channels);
-    try testing.expectEqual(api.SampleType.i16, decoder.info.sample_type);
+    try testing.expectEqual(api.SampleType.f32, decoder.info.sample_type);
 
     var adapter = api.DecoderReader.init(decoder);
     const reader = adapter.reader();
@@ -70,16 +70,16 @@ test "Vorbis decoded audio has signal" {
     var audio = try api.decodeMemory(testing.allocator, test_vorbis_data);
     defer audio.deinit(testing.allocator);
 
-    const samples = std.mem.bytesAsSlice(i16, audio.data);
+    const samples = std.mem.bytesAsSlice(f32, audio.data);
     var non_zero: usize = 0;
-    var max_sample: i16 = 0;
+    var max_sample: f32 = 0;
     for (samples) |sample| {
         if (sample != 0) non_zero += 1;
-        const abs_sample = if (sample < 0) -sample else sample;
+        const abs_sample = @abs(sample);
         if (abs_sample > max_sample) max_sample = abs_sample;
     }
 
     try testing.expect(non_zero > samples.len / 10);
     try testing.expect(max_sample > 0);
-    try testing.expect(max_sample <= std.math.maxInt(i16));
+    try testing.expect(max_sample <= 1.0);
 }

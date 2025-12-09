@@ -69,7 +69,7 @@ const AacDecoder = struct {
 };
 
 const DecoderContext = struct {
-    samples: []i16,
+    samples: []f32,
     position: usize = 0,
     info: api.AudioInfo,
     bit_reader: *BitReader,
@@ -138,7 +138,7 @@ fn info(br: *BitReader) !api.AudioInfo {
     return .{
         .sample_rate = header.sample_rate,
         .channels = header.channels,
-        .sample_type = .i16,
+        .sample_type = .f32,
         .total_frames = 0,
         .duration_seconds = 0.0,
     };
@@ -174,7 +174,7 @@ fn readAllBytes(br: *BitReader, allocator: std.mem.Allocator) ![]u8 {
 
 fn decodeEntireStream(allocator: std.mem.Allocator, data: []const u8) !struct {
     info: api.AudioInfo,
-    samples: []i16,
+    samples: []f32,
 } {
     var decoder = try AacDecoder.init(allocator);
     defer decoder.deinit(allocator);
@@ -196,7 +196,7 @@ fn decodeEntireStream(allocator: std.mem.Allocator, data: []const u8) !struct {
         _ = NeAACDecSetConfiguration(decoder.handle, config);
     }
 
-    var samples = ArrayList(i16).empty;
+    var samples = ArrayList(f32).empty;
     defer samples.deinit(allocator);
 
     var offset: usize = 0;
@@ -204,7 +204,7 @@ fn decodeEntireStream(allocator: std.mem.Allocator, data: []const u8) !struct {
     var decoded_info = api.AudioInfo{
         .sample_rate = @intCast(sample_rate),
         .channels = channels,
-        .sample_type = .i16,
+        .sample_type = .f32,
         .total_frames = 0,
         .duration_seconds = 0.0,
     };
@@ -227,8 +227,11 @@ fn decodeEntireStream(allocator: std.mem.Allocator, data: []const u8) !struct {
         if (decoded_ptr != null and frame_info.samples > 0) {
             const sample_count = @as(usize, @intCast(frame_info.samples));
             const pcm = @as([*]const i16, @ptrCast(@alignCast(decoded_ptr)))[0..sample_count];
-            try samples.ensureTotalCapacityPrecise(allocator, samples.items.len + sample_count);
-            samples.appendSliceAssumeCapacity(pcm);
+            // Convert i16 to f32
+            try samples.ensureTotalCapacity(allocator, samples.items.len + sample_count);
+            for (pcm) |s| {
+                samples.appendAssumeCapacity(@as(f32, @floatFromInt(s)) / 32768.0);
+            }
             total_samples += sample_count;
 
             if (decoded_info.sample_rate == 0) decoded_info.sample_rate = @intCast(frame_info.samplerate);
@@ -285,13 +288,13 @@ fn open(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
     return decoder;
 }
 
-fn decoderRead(decoder: *format.Decoder, dst: []i16) !usize {
+fn decoderRead(decoder: *format.Decoder, dst: []f32) !usize {
     const ctx: *DecoderContext = @ptrCast(@alignCast(decoder.context));
     if (ctx.position >= ctx.samples.len) return 0;
 
     const remaining = ctx.samples[ctx.position..];
     const copy_count = @min(dst.len, remaining.len);
-    std.mem.copyForwards(i16, dst[0..copy_count], remaining[0..copy_count]);
+    std.mem.copyForwards(f32, dst[0..copy_count], remaining[0..copy_count]);
     ctx.position += copy_count;
     return copy_count;
 }

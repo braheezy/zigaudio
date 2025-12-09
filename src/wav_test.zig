@@ -25,7 +25,7 @@ test "WAV info" {
 
     try testing.expectEqual(@as(u32, 44100), info.sample_rate);
     try testing.expectEqual(@as(u8, 2), info.channels);
-    try testing.expectEqual(SampleType.i16, info.sample_type);
+    try testing.expectEqual(SampleType.f32, info.sample_type);
     try testing.expect(info.total_frames > 0);
 }
 
@@ -35,9 +35,9 @@ test "WAV decode" {
 
     try testing.expectEqual(@as(u32, 44100), audio.params.sample_rate);
     try testing.expectEqual(@as(u8, 2), audio.params.channels);
-    try testing.expectEqual(SampleType.i16, audio.params.sample_type);
+    try testing.expectEqual(SampleType.f32, audio.params.sample_type);
 
-    const expected_bytes_per_frame = audio.params.channels * @sizeOf(i16);
+    const expected_bytes_per_frame = audio.params.channels * @sizeOf(f32);
     const frame_count = audio.data.len / expected_bytes_per_frame;
     try testing.expect(frame_count > 0);
 }
@@ -48,7 +48,7 @@ test "WAV streaming API" {
 
     try testing.expectEqual(@as(u32, 44100), decoder.info.sample_rate);
     try testing.expectEqual(@as(u8, 2), decoder.info.channels);
-    try testing.expectEqual(SampleType.i16, decoder.info.sample_type);
+    try testing.expectEqual(SampleType.f32, decoder.info.sample_type);
     try testing.expect(decoder.info.total_frames > 0);
 
     var adapter = api.DecoderReader.init(decoder);

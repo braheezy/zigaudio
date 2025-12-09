@@ -333,7 +333,7 @@ fn decodeNextFrame(ctx: *QoaContext) !void {
     ctx.frames_decoded += frames_from_result;
 }
 
-fn decoderRead(decoder: *format.Decoder, dst: []i16) !usize {
+fn decoderRead(decoder: *format.Decoder, dst: []f32) !usize {
     const ctx: *QoaContext = @ptrCast(@alignCast(decoder.context));
     if (dst.len == 0) return 0;
 
@@ -342,7 +342,10 @@ fn decoderRead(decoder: *format.Decoder, dst: []i16) !usize {
         if (ctx.sample_offset < ctx.sample_count) {
             const available = ctx.sample_count - ctx.sample_offset;
             const to_copy = @min(available, dst.len - written);
-            std.mem.copyForwards(i16, dst[written .. written + to_copy], ctx.samples[ctx.sample_offset .. ctx.sample_offset + to_copy]);
+            // Convert i16 samples to f32
+            for (ctx.samples[ctx.sample_offset .. ctx.sample_offset + to_copy], 0..) |s, i| {
+                dst[written + i] = @as(f32, @floatFromInt(s)) / 32768.0;
+            }
             ctx.sample_offset += to_copy;
             written += to_copy;
             continue;
@@ -392,7 +395,7 @@ fn info(br: *BitReader) !api.AudioInfo {
     return .{
         .sample_rate = header.sample_rate,
         .channels = @intCast(header.channels),
-        .sample_type = .i16,
+        .sample_type = .f32,
         .total_frames = header.total_frames,
         .duration_seconds = duration,
     };
@@ -450,7 +453,7 @@ pub fn open(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
         .info = .{
             .sample_rate = header.sample_rate,
             .channels = @intCast(header.channels),
-            .sample_type = .i16,
+            .sample_type = .f32,
             .total_frames = header.total_frames,
             .duration_seconds = duration,
         },
@@ -510,7 +513,7 @@ fn fileWriteU64BE(file: std.fs.File, v: u64) api.WriteError!void {
 }
 
 pub fn encodeToFile(file: std.fs.File, audio: *const api.Audio) api.WriteError!void {
-    if (audio.params.sample_type != .i16) return error.UnsupportedBitDepth;
+    if (audio.params.sample_type != .f32) return error.UnsupportedBitDepth;
     if (audio.params.channels == 0 or audio.params.channels > max_channels) return error.UnsupportedChannelCount;
     if (audio.params.sample_rate == 0 or audio.params.sample_rate > 0x00FF_FFFF) return error.UnsupportedSampleRate;
 
@@ -580,7 +583,7 @@ pub fn encodeToFile(file: std.fs.File, audio: *const api.Audio) api.WriteError!v
                         const f: usize = frame_start + sample_index + @as(usize, @intCast(k));
                         if (f >= frame_start + this_frame_len) break;
                         const sample_pos: usize = f * channels + c;
-                        const sample: i32 = @intCast(readSampleI16LE(audio, sample_pos));
+                        const sample: i32 = @intCast(readSampleAsI16(audio, sample_pos));
                         const predicted: i32 = state.predict();
                         const residual: i32 = sample - predicted;
                         const scaled: i32 = div(residual, scalefactor);
@@ -626,14 +629,18 @@ pub fn encodeToFile(file: std.fs.File, audio: *const api.Audio) api.WriteError!v
     }
 }
 
-fn readSampleI16LE(audio: *const api.Audio, sample_index: usize) i16 {
-    const byte_index = sample_index * 2;
-    const p = @as(*const [2]u8, @ptrCast(&audio.data[byte_index]));
-    return std.mem.readInt(i16, p, .little);
+fn readSampleAsI16(audio: *const api.Audio, sample_index: usize) i16 {
+    const byte_index = sample_index * 4;
+    const p = @as(*const [4]u8, @ptrCast(&audio.data[byte_index]));
+    const f: f32 = @bitCast(std.mem.readInt(u32, p, .little));
+    // Convert f32 to i16 with clamping
+    const scaled = f * 32767.0;
+    const clamped = @max(-32768.0, @min(32767.0, scaled));
+    return @intFromFloat(clamped);
 }
 
 pub fn encode(writer: *std.Io.Writer, audio: *const api.Audio) api.WriteError!void {
-    if (audio.params.sample_type != .i16) return error.UnsupportedBitDepth;
+    if (audio.params.sample_type != .f32) return error.UnsupportedBitDepth;
     if (audio.params.channels == 0 or audio.params.channels > max_channels) return error.UnsupportedChannelCount;
     if (audio.params.sample_rate == 0 or audio.params.sample_rate > 0x00FF_FFFF) return error.UnsupportedSampleRate;
 
@@ -711,7 +718,7 @@ pub fn encode(writer: *std.Io.Writer, audio: *const api.Audio) api.WriteError!vo
                         const f: usize = frame_start + sample_index + @as(usize, @intCast(k));
                         if (f >= frame_start + this_frame_len) break;
                         const sample_pos: usize = f * channels + c;
-                        const sample: i32 = @intCast(readSampleI16LE(audio, sample_pos));
+                        const sample: i32 = @intCast(readSampleAsI16(audio, sample_pos));
                         const predicted: i32 = state.predict();
                         const residual: i32 = sample - predicted;
                         const scaled: i32 = div(residual, scalefactor);

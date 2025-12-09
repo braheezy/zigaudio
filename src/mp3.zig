@@ -244,7 +244,7 @@ fn info(br: *BitReader) !api.AudioInfo {
     return .{
         .sample_rate = meta.sample_rate,
         .channels = meta.channels,
-        .sample_type = .i16,
+        .sample_type = .f32,
         .total_frames = meta.total_frames,
         .duration_seconds = meta.duration_seconds,
     };
@@ -264,7 +264,7 @@ const Mp3Decoder = struct {
     finished: bool = false,
 };
 
-fn drainPending(ctx: *Mp3Decoder, dst: []i16) usize {
+fn drainPending(ctx: *Mp3Decoder, dst: []f32) usize {
     if (dst.len == 0) return 0;
     const available_samples = ctx.pending.items.len / 2;
     if (available_samples == 0) return 0;
@@ -276,7 +276,8 @@ fn drainPending(ctx: *Mp3Decoder, dst: []i16) usize {
         const b0: u16 = ctx.pending.items[base];
         const b1: u16 = ctx.pending.items[base + 1];
         const combined: u16 = b0 | (b1 << 8);
-        dst[i] = @as(i16, @bitCast(combined));
+        const sample_i16 = @as(i16, @bitCast(combined));
+        dst[i] = @as(f32, @floatFromInt(sample_i16)) / 32768.0;
     }
 
     const consumed_bytes = to_copy * 2;
@@ -291,7 +292,7 @@ fn drainPending(ctx: *Mp3Decoder, dst: []i16) usize {
     return to_copy;
 }
 
-fn decoderRead(decoder: *format.Decoder, dst: []i16) !usize {
+fn decoderRead(decoder: *format.Decoder, dst: []f32) !usize {
     const ctx: *Mp3Decoder = @ptrCast(@alignCast(decoder.context));
     if (dst.len == 0) return 0;
 
@@ -412,7 +413,7 @@ fn open(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
         .info = .{
             .sample_rate = meta_info.sample_rate,
             .channels = meta_info.channels,
-            .sample_type = .i16,
+            .sample_type = .f32,
             .total_frames = meta_info.total_frames,
             .duration_seconds = meta_info.duration_seconds,
         },

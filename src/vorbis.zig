@@ -32,7 +32,7 @@ fn infoFromHandle(handle: *c.stb_vorbis) api.AudioInfo {
     return .{
         .sample_rate = sample_rate,
         .channels = channels,
-        .sample_type = SampleType.i16,
+        .sample_type = SampleType.f32,
         .total_frames = total_frames,
         .duration_seconds = duration_seconds,
     };
@@ -81,7 +81,7 @@ fn readAllBytes(br: *BitReader, allocator: std.mem.Allocator) ![]u8 {
 
 fn decodeEntireStream(allocator: std.mem.Allocator, bytes: []const u8) !struct {
     info: api.AudioInfo,
-    samples: []i16,
+    samples: []f32,
 } {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -93,26 +93,30 @@ fn decodeEntireStream(allocator: std.mem.Allocator, bytes: []const u8) !struct {
     const base_info = infoFromHandle(handle);
     if (base_info.channels == 0) return error.InvalidFormat;
 
-    var samples = ArrayList(i16).empty;
+    var samples = ArrayList(f32).empty;
     defer samples.deinit(allocator);
 
     const frame_samples: usize = 4096;
     const channel_count: usize = base_info.channels;
     const buffer_len = frame_samples * channel_count;
-    var temp = try allocator.alloc(i16, buffer_len);
-    defer allocator.free(temp);
+    var temp_i16 = try allocator.alloc(i16, buffer_len);
+    defer allocator.free(temp_i16);
 
     while (true) {
         const written = c.stb_vorbis_get_frame_short_interleaved(
             handle,
             @intCast(channel_count),
-            @as([*c]c.int16, @ptrCast(@alignCast(temp.ptr))),
+            @as([*c]c.int16, @ptrCast(@alignCast(temp_i16.ptr))),
             @intCast(frame_samples),
         );
         if (written <= 0) break;
         const per_channel = @as(usize, @intCast(written));
         const total = per_channel * channel_count;
-        try samples.appendSlice(allocator, temp[0..total]);
+        // Convert i16 to f32
+        try samples.ensureTotalCapacity(allocator, samples.items.len + total);
+        for (temp_i16[0..total]) |s| {
+            samples.appendAssumeCapacity(@as(f32, @floatFromInt(s)) / 32768.0);
+        }
     }
 
     if (samples.items.len == 0) return error.InvalidFormat;
@@ -129,13 +133,13 @@ fn decodeEntireStream(allocator: std.mem.Allocator, bytes: []const u8) !struct {
     return .{ .info = decoded_info, .samples = owned };
 }
 
-fn decoderRead(decoder: *format.Decoder, dst: []i16) !usize {
+fn decoderRead(decoder: *format.Decoder, dst: []f32) !usize {
     const ctx: *DecoderContext = @ptrCast(@alignCast(decoder.context));
     if (ctx.position >= ctx.samples.len) return 0;
 
     const remaining = ctx.samples[ctx.position..];
     const copy_count = @min(dst.len, remaining.len);
-    std.mem.copyForwards(i16, dst[0..copy_count], remaining[0..copy_count]);
+    std.mem.copyForwards(f32, dst[0..copy_count], remaining[0..copy_count]);
     ctx.position += copy_count;
     return copy_count;
 }
@@ -155,7 +159,7 @@ const decoder_vtable = format.DecoderVTable{
 };
 
 const DecoderContext = struct {
-    samples: []i16,
+    samples: []f32,
     position: usize = 0,
     info: api.AudioInfo,
     bit_reader: *BitReader,

@@ -46,37 +46,20 @@ fn createFoxenInstance(allocator: std.mem.Allocator) !FoxenInstance {
     return .{ .mem = mem, .decoder = decoder };
 }
 
-inline fn saturateToI16(value: i32) i16 {
-    return if (value > 32767)
-        32767
-    else if (value < -32768)
-        -32768
-    else
-        @intCast(value);
-}
-
-fn convertSample(raw_sample: i32, bits_per_sample: u8) i16 {
+fn convertSample(raw_sample: i32, bits_per_sample: u8) f32 {
     const effective_bps: u8 = if (bits_per_sample == 0) 16 else bits_per_sample;
     const clamped_bps = std.math.clamp(effective_bps, 1, 32);
 
+    // FLAC stores samples left-aligned in the i32, so we need to shift right
     const back_shift: std.math.Log2Int(i32) = @intCast(32 - clamped_bps);
     const aligned_sample = if (back_shift == 0)
         raw_sample
     else
         raw_sample >> back_shift;
 
-    if (clamped_bps >= 16) {
-        const reduce_bits: std.math.Log2Int(i32) = @intCast(clamped_bps - 16);
-        const reduced = if (reduce_bits == 0)
-            aligned_sample
-        else
-            aligned_sample >> reduce_bits;
-        return saturateToI16(reduced);
-    }
-
-    const expand_bits: std.math.Log2Int(i32) = @intCast(16 - clamped_bps);
-    const expanded = aligned_sample << expand_bits;
-    return saturateToI16(expanded);
+    // Normalize to [-1.0, 1.0] based on the bit depth
+    const max_val: f32 = @floatFromInt(@as(i32, 1) << @intCast(clamped_bps - 1));
+    return @as(f32, @floatFromInt(aligned_sample)) / max_val;
 }
 
 fn ensureInput(br: *BitReader) !bool {
@@ -214,7 +197,7 @@ fn flacInfo(br: *BitReader) !api.AudioInfo {
     return .{
         .sample_rate = metadata.sample_rate,
         .channels = metadata.channels,
-        .sample_type = .i16,
+        .sample_type = .f32,
         .total_frames = total_frames,
         .duration_seconds = duration,
     };
@@ -267,7 +250,7 @@ fn ensureSamples(decoder: *FlacDecoder) !usize {
     }
 }
 
-fn decoderRead(dec: *format.Decoder, dst: []i16) !usize {
+fn decoderRead(dec: *format.Decoder, dst: []f32) !usize {
     const ctx: *FlacDecoder = @ptrCast(@alignCast(dec.context));
     if (ctx.finished and ctx.sample_index >= ctx.sample_count) return 0;
 
@@ -342,7 +325,7 @@ fn flacOpen(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
         .info = .{
             .sample_rate = metadata.sample_rate,
             .channels = metadata.channels,
-            .sample_type = .i16,
+            .sample_type = .f32,
             .total_frames = total_frames,
             .duration_seconds = duration,
         },

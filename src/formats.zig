@@ -29,18 +29,18 @@ pub const Decoder = struct {
     info: api.AudioInfo,
     id: Id,
 
-    /// Read decoded PCM samples as interleaved i16
-    pub fn read(self: *Decoder, dst: []i16) !usize {
+    /// Read decoded PCM samples as interleaved f32 in range [-1.0, 1.0]
+    pub fn read(self: *Decoder, dst: []f32) !usize {
         return self.vtable.read(self, dst);
     }
 
     /// Read decoded PCM frames into a byte buffer.
-    /// The buffer should be sized as: frames * channels * sizeof(i16)
+    /// The buffer should be sized as: frames * channels * sizeof(f32)
     /// Returns the number of frames read (not bytes).
     pub fn readFramesInto(self: *Decoder, dst: []u8) !usize {
-        if (dst.len < 2) return 0; // Need at least one i16
-        const aligned_len = dst.len & ~@as(usize, 1); // Align to i16 boundary
-        const samples_slice: []i16 = @alignCast(std.mem.bytesAsSlice(i16, dst[0..aligned_len]));
+        if (dst.len < 4) return 0; // Need at least one f32
+        const aligned_len = dst.len & ~@as(usize, 3); // Align to f32 boundary
+        const samples_slice: []f32 = @alignCast(std.mem.bytesAsSlice(f32, dst[0..aligned_len]));
         const samples_read = try self.read(samples_slice);
         return samples_read / @as(usize, self.info.channels);
     }
@@ -53,26 +53,27 @@ pub const Decoder = struct {
         else
             4096 * @as(usize, self.info.channels);
 
-        var samples = try std.ArrayList(i16).initCapacity(allocator, total_samples);
+        var samples = try std.ArrayList(f32).initCapacity(allocator, total_samples);
         defer samples.deinit(allocator);
 
-        var chunk: [4096]i16 = undefined;
+        var chunk: [4096]f32 = undefined;
         while (true) {
             const n = try self.read(&chunk);
             if (n == 0) break;
             try samples.appendSlice(allocator, chunk[0..n]);
         }
 
-        const data = try allocator.alloc(u8, samples.items.len * @sizeOf(i16));
-        @memcpy(data, std.mem.sliceAsBytes(samples.items));
+        // Allocate with f32 alignment to ensure samples() can safely reinterpret as []f32
+        const data_aligned: []align(@alignOf(f32)) u8 = try allocator.alignedAlloc(u8, std.mem.Alignment.fromByteUnits(@alignOf(f32)), samples.items.len * @sizeOf(f32));
+        @memcpy(data_aligned, std.mem.sliceAsBytes(samples.items));
 
         return api.Audio{
             .params = .{
                 .sample_rate = self.info.sample_rate,
                 .channels = self.info.channels,
-                .sample_type = .i16,
+                .sample_type = .f32,
             },
-            .data = data,
+            .data = data_aligned,
         };
     }
 
@@ -81,10 +82,10 @@ pub const Decoder = struct {
     /// Returns an Audio struct that must be freed with audio.deinit(allocator).
     pub fn toAudioLimit(self: *Decoder, allocator: std.mem.Allocator, max_frames: usize) !api.Audio {
         const max_samples = max_frames * @as(usize, self.info.channels);
-        var samples = try std.ArrayList(i16).initCapacity(allocator, max_samples);
+        var samples = try std.ArrayList(f32).initCapacity(allocator, max_samples);
         defer samples.deinit(allocator);
 
-        var chunk: [4096]i16 = undefined;
+        var chunk: [4096]f32 = undefined;
         while (samples.items.len < max_samples) {
             const remaining = max_samples - samples.items.len;
             const to_read = @min(chunk.len, remaining);
@@ -93,16 +94,17 @@ pub const Decoder = struct {
             try samples.appendSlice(allocator, chunk[0..n]);
         }
 
-        const data = try allocator.alloc(u8, samples.items.len * @sizeOf(i16));
-        @memcpy(data, std.mem.sliceAsBytes(samples.items));
+        // Allocate with f32 alignment to ensure samples() can safely reinterpret as []f32
+        const data_aligned: []align(@alignOf(f32)) u8 = try allocator.alignedAlloc(u8, std.mem.Alignment.fromByteUnits(@alignOf(f32)), samples.items.len * @sizeOf(f32));
+        @memcpy(data_aligned, std.mem.sliceAsBytes(samples.items));
 
         return api.Audio{
             .params = .{
                 .sample_rate = self.info.sample_rate,
                 .channels = self.info.channels,
-                .sample_type = .i16,
+                .sample_type = .f32,
             },
-            .data = data,
+            .data = data_aligned,
         };
     }
 
@@ -128,7 +130,7 @@ pub const Decoder = struct {
 
 /// Function signatures for decoder operations
 pub const DecoderVTable = struct {
-    read: *const fn (*Decoder, dst: []i16) anyerror!usize,
+    read: *const fn (*Decoder, dst: []f32) anyerror!usize,
     deinit: *const fn (*Decoder, allocator: std.mem.Allocator) void,
     seek: ?*const fn (*Decoder, frame: usize) anyerror!void = null,
 };

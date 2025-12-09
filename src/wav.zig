@@ -215,19 +215,16 @@ fn info(br: *BitReader) !api.AudioInfo {
     const total_samples = metadata.data_size / bytes_per_sample;
     const total_frames = total_samples / metadata.channels;
 
-    // All WAV decoded to i16
-    const sample_type: api.SampleType = .i16;
-
     return .{
         .sample_rate = metadata.sample_rate,
         .channels = @intCast(metadata.channels),
-        .sample_type = sample_type,
+        .sample_type = .f32,
         .total_frames = total_frames,
         .duration_seconds = @as(f64, @floatFromInt(total_frames)) / @as(f64, @floatFromInt(metadata.sample_rate)),
     };
 }
 
-fn decoderRead(decoder: *format.Decoder, dst: []i16) !usize {
+fn decoderRead(decoder: *format.Decoder, dst: []f32) !usize {
     const ctx: *WavDecoder = @ptrCast(@alignCast(decoder.context));
 
     if (ctx.samples_read >= ctx.total_samples) return 0;
@@ -257,24 +254,24 @@ fn decoderRead(decoder: *format.Decoder, dst: []i16) !usize {
     return actual_samples_read;
 }
 
-fn decodePCM(br: *BitReader, dst: []i16, bits_per_sample: u16) !void {
+fn decodePCM(br: *BitReader, dst: []f32, bits_per_sample: u16) !void {
     for (dst) |*sample| {
-        // Convert to i16 with proper scaling (WAV is little-endian)
+        // Convert to f32 in range [-1.0, 1.0] (WAV is little-endian)
         sample.* = switch (bits_per_sample) {
             8 => blk: {
                 // 8-bit PCM is unsigned (0-255), center at 128
                 const raw = try br.readBits(8);
-                const unsigned: i16 = @intCast(raw);
-                break :blk (unsigned - 128) << 8;
+                const unsigned: i32 = @intCast(raw);
+                break :blk @as(f32, @floatFromInt(unsigned - 128)) / 128.0;
             },
             16 => blk: {
                 // 16-bit PCM is signed, little-endian
                 const raw = try read16(br);
                 const signed: i16 = @bitCast(raw);
-                break :blk signed;
+                break :blk @as(f32, @floatFromInt(signed)) / 32768.0;
             },
             24 => blk: {
-                // 24-bit to 16-bit: read 3 bytes little-endian, take top 16 bits
+                // 24-bit: read 3 bytes little-endian, sign-extend
                 const b0 = try br.readBits(8);
                 const b1 = try br.readBits(8);
                 const b2 = try br.readBits(8);
@@ -283,36 +280,32 @@ fn decodePCM(br: *BitReader, dst: []i16, bits_per_sample: u16) !void {
                     @as(i32, @bitCast(raw | 0xFF000000))
                 else
                     @as(i32, @bitCast(raw));
-                break :blk @intCast(signed >> 8);
+                break :blk @as(f32, @floatFromInt(signed)) / 8388608.0;
             },
             32 => blk: {
-                // 32-bit to 16-bit: take top 16 bits
+                // 32-bit PCM
                 const raw = try read32(br);
                 const signed: i32 = @bitCast(raw);
-                break :blk @intCast(signed >> 16);
+                break :blk @as(f32, @floatFromInt(signed)) / 2147483648.0;
             },
             else => return error.UnsupportedBitDepth,
         };
     }
 }
 
-fn decodeFloat(br: *BitReader, dst: []i16, bits_per_sample: u16) !void {
+fn decodeFloat(br: *BitReader, dst: []f32, bits_per_sample: u16) !void {
     for (dst) |*sample| {
         if (bits_per_sample == 32) {
+            // 32-bit float - direct passthrough
             const raw = try read32(br);
-            const float_val: f32 = @bitCast(raw);
-            // Clamp and convert float [-1.0, 1.0] to i16
-            const scaled = float_val * 32767.0;
-            const clamped = @max(-32768.0, @min(32767.0, scaled));
-            sample.* = @intFromFloat(clamped);
+            sample.* = @bitCast(raw);
         } else if (bits_per_sample == 64) {
+            // 64-bit float - convert to f32
             const raw1 = try read32(br);
             const raw2 = try read32(br);
             const raw64: u64 = (@as(u64, raw2) << 32) | raw1;
             const float_val: f64 = @bitCast(raw64);
-            const scaled = float_val * 32767.0;
-            const clamped = @max(-32768.0, @min(32767.0, scaled));
-            sample.* = @intFromFloat(clamped);
+            sample.* = @floatCast(float_val);
         } else {
             return error.UnsupportedBitDepth;
         }
@@ -320,33 +313,31 @@ fn decodeFloat(br: *BitReader, dst: []i16, bits_per_sample: u16) !void {
 }
 
 // mu-Law expansion table (ITU-T G.711)
-// Decodes 8-bit mu-law to 16-bit linear PCM
+// Decodes 8-bit mu-law to f32 in range [-1.0, 1.0]
 const MULAW_TABLE = blk: {
-    var table: [256]i16 = undefined;
+    var table: [256]f32 = undefined;
     for (0..256) |i| {
         const mu: u8 = @intCast(i);
         const inv = ~mu;
-        const sign: i32 = if (inv & 0x80 != 0) -1 else 1;
+        const sign: f32 = if (inv & 0x80 != 0) -1.0 else 1.0;
         const exponent: u5 = @intCast((inv >> 4) & 0x07);
         const mantissa: i32 = inv & 0x0F;
         // Decode mu-law: magnitude = ((mantissa << 1) + 33) << exponent - 33
         const magnitude: i32 = ((mantissa << 1) + 33) << exponent;
-        // Scale from 13-bit range (max 8031) to 16-bit range
-        // Use shift left by 3 bits (multiply by 8) but clamp for safety
-        const scaled = (magnitude - 33) << 2; // Scale by 4 to fit in i16
-        table[i] = @intCast(sign * @min(scaled, 32767));
+        // Normalize to [-1.0, 1.0] - max magnitude is 8031
+        table[i] = sign * @as(f32, @floatFromInt(magnitude - 33)) / 8031.0;
     }
     break :blk table;
 };
 
 // a-Law expansion table (ITU-T G.711)
-// Decodes 8-bit a-law to 16-bit linear PCM
+// Decodes 8-bit a-law to f32 in range [-1.0, 1.0]
 const ALAW_TABLE = blk: {
-    var table: [256]i16 = undefined;
+    var table: [256]f32 = undefined;
     for (0..256) |i| {
         const al: u8 = @intCast(i);
         const inv = al ^ 0x55; // A-law uses inverted odd bits
-        const sign: i32 = if (inv & 0x80 != 0) -1 else 1;
+        const sign: f32 = if (inv & 0x80 != 0) -1.0 else 1.0;
         const exponent: u4 = @intCast((inv >> 4) & 0x07);
         const mantissa: i32 = inv & 0x0F;
         var magnitude: i32 = undefined;
@@ -355,21 +346,20 @@ const ALAW_TABLE = blk: {
         } else {
             magnitude = ((mantissa << 1) + 33) << (exponent - 1);
         }
-        // Scale from 12-bit range to 16-bit range
-        const scaled = magnitude << 3; // Scale by 8
-        table[i] = @intCast(sign * @min(scaled, 32767));
+        // Normalize to [-1.0, 1.0] - max magnitude is 4096
+        table[i] = sign * @as(f32, @floatFromInt(magnitude)) / 4096.0;
     }
     break :blk table;
 };
 
-fn decodeMuLaw(br: *BitReader, dst: []i16) !void {
+fn decodeMuLaw(br: *BitReader, dst: []f32) !void {
     for (dst) |*sample| {
         const raw: u8 = @truncate(try br.readBits(8));
         sample.* = MULAW_TABLE[raw];
     }
 }
 
-fn decodeALaw(br: *BitReader, dst: []i16) !void {
+fn decodeALaw(br: *BitReader, dst: []f32) !void {
     for (dst) |*sample| {
         const raw: u8 = @truncate(try br.readBits(8));
         sample.* = ALAW_TABLE[raw];
@@ -395,7 +385,7 @@ const IMA_INDEX_TABLE = [16]i32{
     -1, -1, -1, -1, 2, 4, 6, 8,
 };
 
-fn decodeImaNibble(nibble: u4, state: *AdpcmChannelState) i16 {
+fn decodeImaNibble(nibble: u4, state: *AdpcmChannelState) f32 {
     const step = IMA_STEP_TABLE[@intCast(state.step_index)];
 
     // Compute difference
@@ -411,10 +401,10 @@ fn decodeImaNibble(nibble: u4, state: *AdpcmChannelState) i16 {
     // Update step index with clamping
     state.step_index = std.math.clamp(state.step_index + IMA_INDEX_TABLE[nibble], 0, 88);
 
-    return @intCast(state.predictor);
+    return @as(f32, @floatFromInt(state.predictor)) / 32768.0;
 }
 
-fn decodeImaAdpcm(ctx: *WavDecoder, dst: []i16) !usize {
+fn decodeImaAdpcm(ctx: *WavDecoder, dst: []f32) !usize {
     const channels = ctx.metadata.channels;
     var samples_written: usize = 0;
 
@@ -452,7 +442,7 @@ fn decodeImaAdpcm(ctx: *WavDecoder, dst: []i16) !usize {
             // Output initial predictor values (one frame)
             for (0..channels) |ch| {
                 if (samples_written >= dst.len) break;
-                dst[samples_written] = @intCast(ctx.adpcm_state[ch].predictor);
+                dst[samples_written] = @as(f32, @floatFromInt(ctx.adpcm_state[ch].predictor)) / 32768.0;
                 samples_written += 1;
             }
         }
@@ -503,7 +493,7 @@ const MS_ADPCM_ADAPT_TABLE = [16]i32{
     768, 614, 512, 409, 307, 230, 230, 230,
 };
 
-fn decodeMsNibble(nibble: u4, state: *AdpcmChannelState) i16 {
+fn decodeMsNibble(nibble: u4, state: *AdpcmChannelState) f32 {
     // Sign-extend nibble to i64 for safe arithmetic
     const signed_nibble: i64 = if (nibble >= 8)
         @as(i64, nibble) - 16
@@ -522,10 +512,10 @@ fn decodeMsNibble(nibble: u4, state: *AdpcmChannelState) i16 {
     const delta_calc: i64 = (@as(i64, state.delta) * MS_ADPCM_ADAPT_TABLE[nibble]) >> 8;
     state.delta = @intCast(@max(16, @min(delta_calc, 65535)));
 
-    return @intCast(sample);
+    return @as(f32, @floatFromInt(sample)) / 32768.0;
 }
 
-fn decodeMsAdpcm(ctx: *WavDecoder, dst: []i16) !usize {
+fn decodeMsAdpcm(ctx: *WavDecoder, dst: []f32) !usize {
     const channels = ctx.metadata.channels;
     var samples_written: usize = 0;
 
@@ -563,12 +553,12 @@ fn decodeMsAdpcm(ctx: *WavDecoder, dst: []i16) !usize {
             // Output initial samples (sample2 first, then sample1)
             for (0..channels) |ch| {
                 if (samples_written >= dst.len) break;
-                dst[samples_written] = @intCast(ctx.adpcm_state[ch].sample2);
+                dst[samples_written] = @as(f32, @floatFromInt(ctx.adpcm_state[ch].sample2)) / 32768.0;
                 samples_written += 1;
             }
             for (0..channels) |ch| {
                 if (samples_written >= dst.len) break;
-                dst[samples_written] = @intCast(ctx.adpcm_state[ch].sample1);
+                dst[samples_written] = @as(f32, @floatFromInt(ctx.adpcm_state[ch].sample1)) / 32768.0;
                 samples_written += 1;
             }
 
@@ -627,7 +617,7 @@ pub const decoder_vtable = format.DecoderVTable{
 };
 
 fn encode(writer: *std.Io.Writer, audio: *const api.Audio) api.WriteError!void {
-    if (audio.params.sample_type != .i16) return error.UnsupportedBitDepth;
+    if (audio.params.sample_type != .f32) return error.UnsupportedBitDepth;
     if (audio.params.channels == 0) return error.UnsupportedChannelCount;
 
     const channels_u8 = audio.params.channels;
@@ -635,21 +625,20 @@ fn encode(writer: *std.Io.Writer, audio: *const api.Audio) api.WriteError!void {
     const sample_rate: u32 = audio.params.sample_rate;
     if (sample_rate == 0) return error.UnsupportedSampleRate;
 
-    const bits_per_sample: u16 = 16;
-    const bytes_per_sample: usize = bits_per_sample / 8;
-    const bytes_per_sample_u16: u16 = @intCast(bytes_per_sample);
+    // Convert f32 samples to i16 for output (more compatible than float WAV)
+    const f32_samples = std.mem.bytesAsSlice(f32, audio.data);
+    const num_samples = f32_samples.len;
 
-    const block_align: u16 = channels * bytes_per_sample_u16;
+    const bits_per_sample: u16 = 16;
+    const bytes_per_sample: usize = 2;
+
+    const block_align: u16 = channels * 2;
     const block_align_u32: u32 = @intCast(block_align);
     const byte_rate: u32 = sample_rate * block_align_u32;
 
-    const data_len = audio.data.len;
-    if (data_len % bytes_per_sample != 0) return error.InvalidFormat;
+    const data_len = num_samples * bytes_per_sample;
     if (data_len > std.math.maxInt(u32)) return error.Unsupported;
     const data_len_u32: u32 = @intCast(data_len);
-
-    const total_frames = audio.frameCount();
-    if (total_frames > std.math.maxInt(u32)) return error.Unsupported;
 
     const chunk_size: u32 = 36 + data_len_u32;
 
@@ -669,7 +658,21 @@ fn encode(writer: *std.Io.Writer, audio: *const api.Audio) api.WriteError!void {
     std.mem.writeInt(u32, header[40..44], data_len_u32, .little);
 
     try writer.writeAll(&header);
-    try writer.writeAll(audio.data);
+
+    // Convert and write samples in chunks
+    var i16_buf: [1024]i16 = undefined;
+    var offset: usize = 0;
+    while (offset < num_samples) {
+        const chunk_len = @min(i16_buf.len, num_samples - offset);
+        for (0..chunk_len) |i| {
+            const f = f32_samples[offset + i];
+            const scaled = f * 32767.0;
+            const clamped = @max(-32768.0, @min(32767.0, scaled));
+            i16_buf[i] = @intFromFloat(clamped);
+        }
+        try writer.writeAll(std.mem.sliceAsBytes(i16_buf[0..chunk_len]));
+        offset += chunk_len;
+    }
 }
 
 fn open(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
@@ -723,7 +726,7 @@ fn open(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
         .info = .{
             .sample_rate = metadata.sample_rate,
             .channels = @intCast(metadata.channels),
-            .sample_type = .i16,
+            .sample_type = .f32,
             .total_frames = total_frames,
             .duration_seconds = @as(f64, @floatFromInt(total_frames)) / @as(f64, @floatFromInt(metadata.sample_rate)),
         },
