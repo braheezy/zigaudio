@@ -80,7 +80,7 @@ pub fn main() !void {
         const options = zoto.ContextOptions{
             .sample_rate = pcm.params.sample_rate,
             .channel_count = pcm.params.channels,
-            .format = .int16_le,
+            .format = .float32_le,
         };
         const context = try zoto.newContext(allocator, options);
         defer context.deinit();
@@ -130,7 +130,7 @@ pub fn main() !void {
     const options = zoto.ContextOptions{
         .sample_rate = info.sample_rate,
         .channel_count = info.channels,
-        .format = .int16_le,
+        .format = .float32_le,
     };
 
     const context = try zoto.newContext(allocator, options);

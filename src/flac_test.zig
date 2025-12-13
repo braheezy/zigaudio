@@ -23,7 +23,7 @@ test "FLAC info" {
     const info = try flac.vtable.info(&br);
     try testing.expectEqual(@as(u32, 44100), info.sample_rate);
     try testing.expectEqual(@as(u8, 2), info.channels);
-    try testing.expectEqual(api.SampleType.i16, info.sample_type);
+    try testing.expectEqual(api.SampleType.f32, info.sample_type);
     try testing.expect(info.total_frames > 0);
 }
 
@@ -33,7 +33,7 @@ test "FLAC decode full buffer" {
 
     try testing.expectEqual(@as(u32, 44100), audio.params.sample_rate);
     try testing.expectEqual(@as(u8, 2), audio.params.channels);
-    try testing.expectEqual(api.SampleType.i16, audio.params.sample_type);
+    try testing.expectEqual(api.SampleType.f32, audio.params.sample_type);
     try testing.expect(audio.data.len > 0);
 }
 
@@ -55,7 +55,7 @@ test "FLAC streaming reader" {
 
     try testing.expectEqual(@as(u32, 44100), decoder.info.sample_rate);
     try testing.expectEqual(@as(u8, 2), decoder.info.channels);
-    try testing.expectEqual(api.SampleType.i16, decoder.info.sample_type);
+    try testing.expectEqual(api.SampleType.f32, decoder.info.sample_type);
 
     var adapter = api.DecoderReader.init(decoder);
     const reader = adapter.reader();
