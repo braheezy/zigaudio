@@ -22,5 +22,13 @@ pub fn main() !void {
     var audio = try zigaudio.decodeFile(allocator, in_path);
     defer audio.deinit(allocator);
 
-    try zigaudio.encodeToPath(.wav, out_path, &audio);
+    // Determine format from output file extension
+    const format: zigaudio.Id = if (std.mem.endsWith(u8, out_path, ".mp3"))
+        .mp3
+    else if (std.mem.endsWith(u8, out_path, ".wav"))
+        .wav
+    else
+        return error.UnsupportedFormat;
+
+    try zigaudio.encodeToPath(format, out_path, &audio);
 }

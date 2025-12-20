@@ -677,7 +677,6 @@ fn encode(writer: *std.Io.Writer, audio: *const api.Audio) api.WriteError!void {
 
 fn open(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
     const metadata = try parseMetadata(br);
-
     // Validate format
     const is_supported = metadata.audio_format == FORMAT_PCM or
         metadata.audio_format == FORMAT_IEEE_FLOAT or
