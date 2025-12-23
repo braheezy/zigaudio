@@ -107,11 +107,15 @@ pub const Reservoir = struct {
 const testing = std.testing;
 
 test "reservoir init" {
+    // reservoir_max_size is intentionally 0 to match shine-mp3 behavior
+    // (shine-mp3 initializes reservoir before MPEG version is known)
     const res = Reservoir.init(2, .mpeg1);
-    try testing.expectEqual(@as(i64, 511 * 8), res.reservoir_max_size);
+    try testing.expectEqual(@as(i64, 0), res.reservoir_max_size);
+    try testing.expectEqual(@as(u8, 2), res.channels);
 
     const res2 = Reservoir.init(1, .mpeg2);
-    try testing.expectEqual(@as(i64, 255 * 8), res2.reservoir_max_size);
+    try testing.expectEqual(@as(i64, 0), res2.reservoir_max_size);
+    try testing.expectEqual(@as(u8, 1), res2.channels);
 }
 
 test "max reservoir bits" {

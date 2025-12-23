@@ -104,3 +104,52 @@ test "MP3 open invalid" {
     const open_err = mp3.vtable.open(allocator, br_ptr);
     try testing.expectError(error.InvalidFormat, open_err);
 }
+
+// Encoder tests
+
+const test_wav_data = @embedFile("../test-files/fanfare_heartcontainer.wav");
+
+test "MP3 encode from WAV" {
+    const allocator = testing.allocator;
+
+    // Decode the WAV file
+    var audio = try api.decodeMemory(allocator, test_wav_data);
+    defer audio.deinit(allocator);
+
+    try testing.expectEqual(@as(u32, 44100), audio.params.sample_rate);
+    try testing.expectEqual(@as(u8, 2), audio.params.channels);
+
+    // Encode to MP3 file
+    const temp_path = "test_output.mp3";
+    defer std.fs.cwd().deleteFile(temp_path) catch {};
+
+    try api.encodeToPath(.mp3, temp_path, &audio);
+
+    // Read back the MP3 file
+    const file = try std.fs.cwd().openFile(temp_path, .{});
+    defer file.close();
+    const stat = try file.stat();
+    const encoded_data = try allocator.alloc(u8, stat.size);
+    defer allocator.free(encoded_data);
+    _ = try file.readAll(encoded_data);
+
+    // Verify the MP3 file is valid (starts with frame sync)
+    try testing.expect(encoded_data.len > 0);
+    try testing.expectEqual(@as(u8, 0xFF), encoded_data[0]);
+    try testing.expectEqual(@as(u8, 0xFA), encoded_data[1] & 0xFE); // MPEG-1 Layer 3 (masked protection bit)
+
+    // Verify SHA256 checksum for bit-exact output
+    const Sha256 = std.crypto.hash.sha2.Sha256;
+    var hasher = Sha256.init(.{});
+    hasher.update(encoded_data);
+    const hash = hasher.finalResult();
+
+    const expected_hash = [_]u8{
+        0xe4, 0x0f, 0x29, 0x71, 0x4c, 0xa7, 0x86, 0x58,
+        0x28, 0x9c, 0xbb, 0xe8, 0x37, 0xdf, 0xe3, 0x26,
+        0x12, 0x83, 0xb4, 0x1e, 0x4d, 0x06, 0x42, 0x32,
+        0x9f, 0x75, 0x7f, 0xdf, 0xc1, 0x69, 0x55, 0xcc,
+    };
+
+    try testing.expectEqualSlices(u8, &expected_hash, &hash);
+}

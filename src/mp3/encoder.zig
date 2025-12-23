@@ -236,18 +236,6 @@ pub const Encoder = struct {
 
         self.mdctSub(@as(usize, self.channels));
 
-        // Update psychoacoustic model
-        // psycho.updatePsychoModel(
-        //     &self.ratio,
-        //     &self.scale_factor,
-        //     &self.perceptual_energy,
-        //     self.mdct_frequency,
-        //     self.sample_rate_index,
-        //     self.sample_rate,
-        //     self.channels,
-        //     self.granules_per_frame,
-        // );
-
         // Run iteration loop (quantization + huffman table selection)
         l3loop.iterationLoop(
             &self.ratio,
