@@ -3,6 +3,7 @@ const api = @import("../root.zig");
 const mp3 = @import("../mp3.zig");
 const frameheader = @import("frameheader.zig");
 const bits = @import("bits.zig");
+const BitWriter = @import("../BitWriter.zig").BitWriter;
 
 // A SideInfo is MPEG1 Layer 3 Side Information.
 // [2][2] means [gr][ch].
@@ -168,4 +169,125 @@ test "sideinfo read basic structure" {
     try testing.expectEqual(@as(usize, 4), si.scfsi[0].len);
     try testing.expectEqual(@as(usize, 2), si.part2_3_length.len);
     try testing.expectEqual(@as(usize, 2), si.part2_3_length[0].len);
+}
+
+// Encoder-specific SideInfo structure (matches Go's nested structure)
+pub const EncoderGranuleInfo = struct {
+    part2_3_length: u64 = 0,
+    big_values: u64 = 0,
+    count1: u64 = 0,
+    global_gain: u64 = 0,
+    scale_factor_compress: u64 = 0,
+    table_select: [3]u64 = .{0} ** 3,
+    region0_count: u64 = 0,
+    region1_count: u64 = 0,
+    preflag: u64 = 0,
+    scale_factor_scale: u64 = 0,
+    count1_table_select: u64 = 0,
+    part2_length: u64 = 0,
+    scale_factor_band_max_len: u64 = 0,
+    address1: u64 = 0,
+    address2: u64 = 0,
+    address3: u64 = 0,
+    quantizer_step_size: i64 = 0,
+    scale_factor_len: [4]u64 = .{0} ** 4,
+};
+
+pub const GranuleChannel = struct {
+    tt: EncoderGranuleInfo,
+};
+
+pub const Granule = struct {
+    channels: [2]GranuleChannel,
+};
+
+pub const EncoderSideInfo = struct {
+    private_bits: u64 = 0,
+    reservoir_drain: i64 = 0,
+    scale_factor_select_info: [2][4]u64 = .{.{0} ** 4} ** 2,
+    granules: [2]Granule = .{
+        .{ .channels = .{ .{ .tt = .{} }, .{ .tt = .{} } } },
+        .{ .channels = .{ .{ .tt = .{} }, .{ .tt = .{} } } },
+    },
+};
+
+
+/// Write side information to BitWriter
+/// Note: This does NOT write the frame header (that's done separately via writeFrameHeader)
+pub fn writeSideInfo(
+    bw: *BitWriter,
+    side_info: *const EncoderSideInfo,
+    version: mp3.Version,
+    channels: u8,
+    granules_per_frame: u8,
+) !void {
+    const mpeg1 = version == .v1;
+
+    // Main data begin (always 0 for encoder, 9 bits for MPEG-1, 8 for MPEG-2)
+    if (mpeg1) {
+        try bw.putBits(0, 9);
+    } else {
+        try bw.putBits(0, 8);
+    }
+
+    // Private bits
+    if (mpeg1) {
+        if (channels == 2) {
+            try bw.putBits(@truncate(side_info.private_bits), 3);
+        } else {
+            try bw.putBits(@truncate(side_info.private_bits), 5);
+        }
+    } else {
+        if (channels == 2) {
+            try bw.putBits(@truncate(side_info.private_bits), 2);
+        } else {
+            try bw.putBits(@truncate(side_info.private_bits), 1);
+        }
+    }
+
+    // Scale factor select information (MPEG-1 only)
+    if (mpeg1) {
+        for (0..channels) |ch| {
+            for (0..4) |band| {
+                try bw.putBits(@truncate(side_info.scale_factor_select_info[ch][band]), 1);
+            }
+        }
+    }
+
+    // Granule information
+    for (0..granules_per_frame) |gr| {
+        for (0..channels) |ch| {
+            const gran_info = &side_info.granules[gr].channels[ch].tt;
+
+            try bw.putBits(@truncate(gran_info.part2_3_length), 12);
+            try bw.putBits(@truncate(gran_info.big_values), 9);
+            try bw.putBits(@truncate(gran_info.global_gain), 8);
+
+            if (mpeg1) {
+                try bw.putBits(@truncate(gran_info.scale_factor_compress), 4);
+            } else {
+                try bw.putBits(@truncate(gran_info.scale_factor_compress), 9);
+            }
+
+            // Window switch flag (always 0 for normal windows)
+            try bw.putBits(0, 1);
+
+            // Table select (3 regions)
+            for (0..3) |region| {
+                try bw.putBits(@truncate(gran_info.table_select[region]), 5);
+            }
+
+            // Region counts
+            try bw.putBits(@truncate(gran_info.region0_count), 4);
+            try bw.putBits(@truncate(gran_info.region1_count), 3);
+
+            // Preflag (MPEG-1 only)
+            if (mpeg1) {
+                try bw.putBits(@truncate(gran_info.preflag), 1);
+            }
+
+            try bw.putBits(@truncate(gran_info.scale_factor_scale), 1);
+            try bw.putBits(@truncate(gran_info.count1_table_select), 1);
+        }
+    }
 }

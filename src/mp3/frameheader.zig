@@ -2,6 +2,7 @@ const std = @import("std");
 const api = @import("../root.zig");
 const mp3 = @import("../mp3.zig");
 const io = @import("../io.zig");
+const BitWriter = @import("../BitWriter.zig").BitWriter;
 
 // MP3 frame header structure
 pub const FrameHeader = struct {
@@ -190,6 +191,71 @@ pub const FrameHeader = struct {
         return slots * 8;
     }
 };
+
+/// Parameters for creating a frame header
+pub const HeaderParams = struct {
+    version: mp3.Version,
+    layer: mp3.Layer,
+    protection_bit: u1, // 1 = no CRC, 0 = CRC present
+    bitrate_index: u4,
+    sampling_frequency: u2, // 0-2, not the actual frequency
+    padding: u1,
+    private_bit: u1,
+    mode: mp3.Mode,
+    mode_extension: u2,
+    copyright: u1,
+    original: u1,
+    emphasis: u2,
+};
+
+/// Write a frame header to the BitWriter
+pub fn writeFrameHeader(bw: *BitWriter, params: HeaderParams) !void {
+    // Sync word: 11 bits of all ones (0x7FF)
+    try bw.putBits(0x7FF, 11);
+    // Version: 2 bits
+    try bw.putBits(@intFromEnum(params.version), 2);
+    // Layer: 2 bits
+    try bw.putBits(@intFromEnum(params.layer), 2);
+    // Protection bit: 1 bit (1 = no CRC, 0 = CRC present)
+    try bw.putBits(params.protection_bit, 1);
+    // Bitrate index: 4 bits
+    try bw.putBits(params.bitrate_index, 4);
+    // Sampling frequency: 2 bits
+    try bw.putBits(params.sampling_frequency, 2);
+    // Padding: 1 bit
+    try bw.putBits(params.padding, 1);
+    // Private bit: 1 bit
+    try bw.putBits(params.private_bit, 1);
+    // Mode: 2 bits
+    try bw.putBits(@intFromEnum(params.mode), 2);
+    // Mode extension: 2 bits
+    try bw.putBits(params.mode_extension, 2);
+    // Copyright: 1 bit
+    try bw.putBits(params.copyright, 1);
+    // Original: 1 bit
+    try bw.putBits(params.original, 1);
+    // Emphasis: 2 bits
+    try bw.putBits(params.emphasis, 2);
+}
+
+/// Create a frame header from parameters and return the raw u32 value
+pub fn createFrameHeader(params: HeaderParams) u32 {
+    var header: u32 = 0;
+    header |= (@as(u32, 0x7FF) << 21); // Sync word
+    header |= (@as(u32, @intFromEnum(params.version)) << 19);
+    header |= (@as(u32, @intFromEnum(params.layer)) << 17);
+    header |= (@as(u32, params.protection_bit) << 16);
+    header |= (@as(u32, params.bitrate_index) << 12);
+    header |= (@as(u32, params.sampling_frequency) << 10);
+    header |= (@as(u32, params.padding) << 9);
+    header |= (@as(u32, params.private_bit) << 8);
+    header |= (@as(u32, @intFromEnum(params.mode)) << 6);
+    header |= (@as(u32, params.mode_extension) << 4);
+    header |= (@as(u32, params.copyright) << 3);
+    header |= (@as(u32, params.original) << 2);
+    header |= params.emphasis;
+    return header;
+}
 
 // Read MP3 frame header from stream
 pub fn readFrameHeader(reader: *std.Io.Reader) api.ReadError!struct { header: FrameHeader, position: u64 } {

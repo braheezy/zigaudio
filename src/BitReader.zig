@@ -182,10 +182,16 @@ pub fn skip(self: *BitReader, bit_count: usize) void {
 }
 
 pub fn tell(self: *BitReader) usize {
+    if (self.file) |*file| {
+        const pos = file.getPos() catch return self.reader.seek;
+        const buffered = self.reader.end - self.reader.seek;
+        return if (pos >= buffered) @intCast(pos - buffered) else self.reader.seek;
+    }
     return self.reader.seek;
 }
 
 pub fn seekTo(self: *BitReader, pos: usize) void {
+    self.bit_index = 0;
     if (self.file) |*file| {
         file.seekTo(@intCast(pos)) catch {
             // leave position unchanged on error

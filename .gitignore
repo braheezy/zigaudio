@@ -8,3 +8,5 @@ references
 /*.mp3
 /*.flac
 .claude/settings.local.json
+
+*cache*

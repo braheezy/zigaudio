@@ -5,6 +5,7 @@ const BitReader = @import("BitReader.zig");
 const frameheader = @import("mp3/frameheader.zig");
 const frame_mod = @import("mp3/frame.zig");
 const mp3_bits = @import("mp3/bits.zig");
+const mp3_encoder = @import("mp3/encoder.zig");
 
 const ArrayList = std.ArrayList;
 const mem = std.mem;
@@ -423,11 +424,50 @@ fn open(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
     return decoder;
 }
 
+fn encode(writer: *std.Io.Writer, audio: *const api.Audio) api.WriteError!void {
+    if (audio.params.sample_type != .f32) return error.UnsupportedBitDepth;
+    if (audio.params.channels == 0 or audio.params.channels > 2) return error.UnsupportedChannelCount;
+    if (audio.params.sample_rate == 0) return error.UnsupportedSampleRate;
+
+    const allocator = std.heap.page_allocator;
+    var encoder = try mp3_encoder.Encoder.init(allocator, audio.params.sample_rate, audio.params.channels);
+    defer encoder.deinit();
+
+    // Convert f32 samples to i16
+    const f32_samples = audio.samples();
+    const num_samples = f32_samples.len;
+    var i16_samples = try allocator.alloc(i16, num_samples);
+    defer allocator.free(i16_samples);
+
+    for (f32_samples, 0..) |sample, i| {
+        const scaled = sample * 32768.0;
+        const clamped = @max(-32768.0, @min(32767.0, scaled));
+        i16_samples[i] = @intFromFloat(clamped);
+    }
+
+    // Encode frame by frame
+    const samples_per_frame_count = @as(usize, encoder.granules_per_frame) * 576;
+    const samples_per_pass = samples_per_frame_count * @as(usize, audio.params.channels);
+
+    var offset: usize = 0;
+    while (offset < num_samples) {
+        const remaining = num_samples - offset;
+        const to_encode = @min(samples_per_pass, remaining);
+        const chunk = i16_samples[offset..offset + to_encode];
+
+        const encoded = try encoder.encodeBuffer(chunk);
+        try writer.writeAll(encoded);
+
+        offset += to_encode;
+    }
+}
+
 pub const vtable = format.VTable{
     .id = .mp3,
     .probe = probe,
     .info = info,
     .open = open,
+    .encode = encode,
 };
 
 // MP3 constants
