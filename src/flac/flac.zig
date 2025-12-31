@@ -1,4 +1,6 @@
 const std = @import("std");
+const build_options = @import("build_options");
+const simd = @import("../simd.zig");
 
 const trace_enabled = false;
 
@@ -735,6 +737,10 @@ pub fn _fx_flac_decode_channel_count(arg_channel_assignment: fx_flac_channel_ass
     return @as(c_int, 1) != 0;
 }
 pub fn _fx_flac_post_process_left_side(arg_blk1: [*c]i32, arg_blk2: [*c]i32, arg_blk_size: u32) callconv(.c) void {
+    if (build_options.simd and simd.is_neon) {
+        simd.postProcessLeftSideNeon(arg_blk1, arg_blk2, arg_blk_size);
+        return;
+    }
     var blk1 = arg_blk1;
     _ = &blk1;
     var blk2 = arg_blk2;
@@ -769,6 +775,10 @@ pub fn _fx_flac_post_process_right_side(arg_blk1: [*c]i32, arg_blk2: [*c]i32, ar
     }
 }
 pub fn _fx_flac_post_process_mid_side(arg_blk1: [*c]i32, arg_blk2: [*c]i32, arg_blk_size: u32) callconv(.c) void {
+    if (build_options.simd and simd.is_neon) {
+        simd.postProcessMidSideNeon(arg_blk1, arg_blk2, arg_blk_size);
+        return;
+    }
     var blk1 = arg_blk1;
     _ = &blk1;
     var blk2 = arg_blk2;
@@ -793,6 +803,10 @@ pub fn _fx_flac_post_process_mid_side(arg_blk1: [*c]i32, arg_blk2: [*c]i32, arg_
     }
 }
 pub fn _fx_flac_restore_lpc_signal(arg_blk: [*c]i32, arg_blk_size: u32, arg_lpc_coeffs: [*c]i32, arg_lpc_order: u8, arg_lpc_shift: i8) callconv(.c) void {
+    if (build_options.simd and simd.is_neon) {
+        simd.restoreLpcSignalNeon(arg_blk, arg_blk_size, arg_lpc_coeffs, arg_lpc_order, arg_lpc_shift);
+        return;
+    }
     var blk = arg_blk;
     _ = &blk;
     var blk_size = arg_blk_size;

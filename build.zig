@@ -3,6 +3,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const simd = b.option(bool, "simd", "Enable SIMD code paths") orelse false;
 
     // Create AAC decoder static library
     const faad2_dep = b.dependency(
@@ -18,6 +19,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     lib_mod.linkLibrary(aac_lib);
+    const options = b.addOptions();
+    options.addOption(bool, "simd", simd);
+    lib_mod.addOptions("build_options", options);
 
     // Test target
     const test_exe = b.addTest(.{

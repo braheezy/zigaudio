@@ -3,6 +3,8 @@ const api = @import("root.zig");
 const format = @import("formats.zig");
 const BitReader = @import("BitReader.zig");
 const c = @import("flac/flac.zig");
+const build_options = @import("build_options");
+const simd = @import("simd.zig");
 
 const FLAC_MAGIC = "fLaC";
 const default_max_block_size: usize = c.FLAC_SUBSET_MAX_BLOCK_SIZE;
@@ -257,10 +259,22 @@ fn decoderRead(dec: *format.Decoder, dst: []f32) !usize {
     var written: usize = 0;
     while (written < dst.len) {
         if (ctx.sample_index < ctx.sample_count) {
-            const sample_i32 = ctx.sample_buffer[ctx.sample_index];
-            dst[written] = convertSample(sample_i32, ctx.bits_per_sample);
-            ctx.sample_index += 1;
-            written += 1;
+            const available = ctx.sample_count - ctx.sample_index;
+            const to_write = @min(available, dst.len - written);
+            const src_slice = ctx.sample_buffer[ctx.sample_index .. ctx.sample_index + to_write];
+            const dst_slice = dst[written .. written + to_write];
+            var processed: usize = 0;
+
+            if (build_options.simd and simd.is_neon) {
+                processed = simd.convertFlacSamplesNeon(dst_slice, src_slice, ctx.bits_per_sample);
+            }
+
+            while (processed < to_write) : (processed += 1) {
+                dst_slice[processed] = convertSample(src_slice[processed], ctx.bits_per_sample);
+            }
+
+            ctx.sample_index += to_write;
+            written += to_write;
             continue;
         }
 
