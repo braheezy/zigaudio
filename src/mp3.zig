@@ -64,11 +64,8 @@ fn skipId3(br: *BitReader) !void {
     var total_skip: usize = 10 + tag_size;
     if (version_major == 4 and (flags & 0x10) != 0) total_skip += 10;
 
-    if (br.file) |*file| {
-        file.seekBy(@intCast(total_skip)) catch return error.InvalidFormat;
-        br.reader.seek = 0;
-        br.reader.end = 0;
-        br.bit_index = 0;
+    if (br.file != null) {
+        br.seekFileBy(total_skip) catch return error.InvalidFormat;
         br.reader.fillMore() catch |err| switch (err) {
             error.EndOfStream => return error.InvalidFormat,
             else => return err,
@@ -79,13 +76,6 @@ fn skipId3(br: *BitReader) !void {
 }
 
 fn absoluteBytePosition(br: *BitReader) !usize {
-    if (br.file) |*file| {
-        const pos = try file.getPos();
-        const buffered = br.reader.end - br.reader.seek;
-        const buffered_u64: u64 = @intCast(buffered);
-        if (pos < buffered_u64) return error.InvalidFormat;
-        return @intCast(pos - buffered_u64);
-    }
     return br.tell();
 }
 
@@ -200,19 +190,19 @@ fn scanMp3Mutable(br: *BitReader) !ScanResult {
 }
 
 fn scanWithClone(br: *BitReader) !ScanResult {
-    if (br.file) |*file| {
-        const saved_pos = try file.getPos();
-        defer file.seekTo(saved_pos) catch {};
+    if (br.file != null) {
+        const saved_pos = br.tell();
+        defer br.seekFileTo(saved_pos) catch {};
 
         const total_size = br.totalSize() orelse return error.InvalidFormat;
         const read_len = @min(total_size, scan_buffer_limit);
         var buffer = try br.allocator.alloc(u8, read_len);
         defer br.allocator.free(buffer);
 
-        try file.seekTo(0);
+        try br.seekFileTo(0);
         var filled: usize = 0;
         while (filled < read_len) {
-            const amt = try file.read(buffer[filled..read_len]);
+            const amt = try br.readFile(buffer[filled..read_len]);
             if (amt == 0) break;
             filled += amt;
         }
@@ -378,16 +368,13 @@ const decoder_vtable = format.DecoderVTable{
 
 fn open(allocator: std.mem.Allocator, br: *BitReader) !*format.Decoder {
     const initial_state = br.*;
-    var initial_pos: ?u64 = null;
-    if (br.file) |*file| {
-        initial_pos = try file.getPos();
-    }
+    const initial_pos: ?usize = if (br.file != null) br.tell() else null;
 
     const scan_result = try scanWithClone(br);
     const meta_info = scan_result.info;
 
-    if (br.file) |*file| {
-        if (initial_pos) |pos| file.seekTo(pos) catch {};
+    if (br.file != null) {
+        if (initial_pos) |pos| br.seekFileTo(pos) catch {};
     }
     br.* = initial_state;
 

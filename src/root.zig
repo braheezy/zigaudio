@@ -17,14 +17,14 @@ pub const Error = error{
 };
 
 ///! Error set for read/streaming APIs.
-pub const ReadError = Error || std.mem.Allocator.Error || std.fs.File.ReadError || std.fs.File.SeekError || std.fs.File.OpenError || error{
+pub const ReadError = Error || std.mem.Allocator.Error || std.Io.File.ReadStreamingError || std.Io.File.SeekError || std.Io.File.OpenError || error{
     EndOfStream,
     StreamTooLong,
     ReadFailed,
 };
 
 ///! Error set for write/encode APIs.
-pub const WriteError = Error || std.mem.Allocator.Error || std.fs.File.OpenError || std.fs.File.WriteError || std.Io.Writer.Error;
+pub const WriteError = Error || std.mem.Allocator.Error || std.Io.File.OpenError || std.Io.File.Writer.Error || std.Io.Writer.Error;
 
 ///! Metadata about a decoded stream without requiring full decode.
 /// Contains the parameters players typically need to set up output.

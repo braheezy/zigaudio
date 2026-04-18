@@ -13,7 +13,9 @@ append_ended: bool = false,
 // cached total size when known (file or fixed memory)
 total_size: ?usize = null,
 // internal file handle (for file mode)
-file: ?std.fs.File = null,
+file: ?std.Io.File = null,
+// Physical file cursor after the bytes currently buffered in reader.
+file_pos: usize = 0,
 // storage owned by this reader when streaming from a file
 owned_buffer: ?[]u8 = null,
 
@@ -32,7 +34,7 @@ pub fn init(allocator: std.mem.Allocator, buffer: []u8) BitReader {
 
 pub fn initFromFile(allocator: std.mem.Allocator, filename: []const u8) !BitReader {
     const file = try std.fs.cwd().openFile(filename, .{});
-    errdefer file.close();
+    errdefer file.close(std.Options.debug_io);
 
     const initial_capacity: usize = 64 * 1024;
     const buffer = try allocator.alloc(u8, initial_capacity);
@@ -42,9 +44,9 @@ pub fn initFromFile(allocator: std.mem.Allocator, filename: []const u8) !BitRead
     bit_reader.reader.seek = 0;
     bit_reader.reader.end = 0;
     bit_reader.file = file;
+    bit_reader.file_pos = 0;
     bit_reader.owned_buffer = buffer;
-    bit_reader.total_size = @intCast(try file.getEndPos());
-    try file.seekTo(0);
+    bit_reader.total_size = @intCast(try file.length(std.Options.debug_io));
     return bit_reader;
 }
 
@@ -81,7 +83,7 @@ pub fn append(self: *BitReader, data: []const u8) !void {
 
 pub fn deinit(self: *BitReader) void {
     if (self.file) |file| {
-        file.close();
+        file.close(std.Options.debug_io);
     }
     if (self.owned_buffer) |buffer| {
         self.allocator.free(buffer);
@@ -182,8 +184,8 @@ pub fn skip(self: *BitReader, bit_count: usize) void {
 }
 
 pub fn tell(self: *BitReader) usize {
-    if (self.file) |*file| {
-        const pos = file.getPos() catch return self.reader.seek;
+    if (self.file != null) {
+        const pos = self.file_pos;
         const buffered = self.reader.end - self.reader.seek;
         return if (pos >= buffered) @intCast(pos - buffered) else self.reader.seek;
     }
@@ -193,14 +195,17 @@ pub fn tell(self: *BitReader) usize {
 pub fn seekTo(self: *BitReader, pos: usize) void {
     self.bit_index = 0;
     if (self.file) |*file| {
-        file.seekTo(@intCast(pos)) catch {
+        std.Options.debug_io.vtable.fileSeekTo(std.Options.debug_io.userdata, file.*, @intCast(pos)) catch {
             // leave position unchanged on error
+            return;
         };
+        self.file_pos = pos;
         self.reader.seek = 0;
         self.reader.end = 0;
         if (self.owned_buffer) |buffer| {
             const to_fill = @min(buffer.len, self.total_size orelse buffer.len);
-            const filled = file.read(buffer[0..to_fill]) catch 0;
+            const filled = file.readStreaming(std.Options.debug_io, &.{buffer[0..to_fill]}) catch 0;
+            self.file_pos += filled;
             self.reader.buffer = buffer;
             self.reader.end = filled;
         }
@@ -213,6 +218,31 @@ pub fn seekTo(self: *BitReader, pos: usize) void {
     if (self.append_list != null) {
         self.append_ended = false;
     }
+}
+
+pub fn readFile(self: *BitReader, buffer: []u8) !usize {
+    const file = self.file orelse return error.InvalidState;
+    const amt = try file.readStreaming(std.Options.debug_io, &.{buffer});
+    self.file_pos += amt;
+    return amt;
+}
+
+pub fn seekFileTo(self: *BitReader, pos: usize) !void {
+    const file = self.file orelse return error.InvalidState;
+    try std.Options.debug_io.vtable.fileSeekTo(std.Options.debug_io.userdata, file, @intCast(pos));
+    self.file_pos = pos;
+    self.reader.seek = 0;
+    self.reader.end = 0;
+    self.bit_index = 0;
+}
+
+pub fn seekFileBy(self: *BitReader, offset: usize) !void {
+    const file = self.file orelse return error.InvalidState;
+    try std.Options.debug_io.vtable.fileSeekBy(std.Options.debug_io.userdata, file, @intCast(offset));
+    self.file_pos += offset;
+    self.reader.seek = 0;
+    self.reader.end = 0;
+    self.bit_index = 0;
 }
 
 pub fn signalEnd(self: *BitReader) void {
@@ -406,10 +436,12 @@ fn stream(r: *std.Io.Reader, w: *std.Io.Writer, limit: std.Io.Limit) std.Io.Read
         var buffer: [4096]u8 = undefined;
         var total_written: usize = 0;
         while (total_written < @intFromEnum(limit)) {
-            const bytes_read = file.read(buffer[0..]) catch |err| switch (err) {
+            const bytes_read = file.readStreaming(std.Options.debug_io, &.{buffer[0..]}) catch |err| switch (err) {
+                error.EndOfStream => break,
                 else => return error.ReadFailed,
             };
             if (bytes_read == 0) break;
+            self.file_pos += bytes_read;
             const to_write = @min(bytes_read, @intFromEnum(limit) - total_written);
             _ = w.write(buffer[0..to_write]) catch |err| switch (err) {
                 else => return error.WriteFailed,
@@ -435,13 +467,12 @@ fn discard(r: *std.Io.Reader, limit: std.Io.Limit) std.Io.Reader.Error!usize {
     const self: *BitReader = @fieldParentPtr("reader", r);
     if (self.file) |file| {
         // File mode - seek forward
-        _ = file.getPos() catch |err| switch (err) {
+        const offset = @intFromEnum(limit);
+        std.Options.debug_io.vtable.fileSeekBy(std.Options.debug_io.userdata, file, @intCast(offset)) catch |err| switch (err) {
             else => return error.ReadFailed,
         };
-        file.seekBy(@intCast(@intFromEnum(limit))) catch |err| switch (err) {
-            else => return error.ReadFailed,
-        };
-        return @intFromEnum(limit);
+        self.file_pos += offset;
+        return offset;
     } else {
         // Memory mode - advance seek position in r
         const available = r.end - r.seek;
@@ -461,9 +492,11 @@ fn readVec(r: *std.Io.Reader, data: [][]u8) std.Io.Reader.Error!usize {
         var total_read: usize = 0;
         for (dest) |slice| {
             if (slice.len == 0) continue;
-            const bytes_read = file.read(slice) catch {
-                return error.ReadFailed;
+            const bytes_read = file.readStreaming(std.Options.debug_io, &.{slice}) catch |err| switch (err) {
+                error.EndOfStream => 0,
+                else => return error.ReadFailed,
             };
+            self.file_pos += bytes_read;
             total_read += bytes_read;
             if (bytes_read < slice.len) {
                 if (total_read > data_size) {

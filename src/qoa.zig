@@ -318,7 +318,6 @@ fn decodeNextFrame(ctx: *QoaContext) !void {
 
     const result = ctx.decoder.decodeFrame(ctx.frame_buf[0..frame_size], frame_size, ctx.samples) catch |err| switch (err) {
         error.FrameTooSmall, error.InvalidFrameHeader => return error.InvalidFormat,
-        else => return err,
     };
 
     const channel_count = channelCount(&ctx.decoder);

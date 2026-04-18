@@ -265,7 +265,7 @@ pub export fn stb_vorbis_decode_frame_pushdata(arg_f: [*c]stb_vorbis, arg_data: 
     {
         i = 0;
         while (i < f.*.channels) : (i += 1) {
-            f.*.outputs[@as(u32, @intCast(i))] = f.*.channel_buffers[@as(u32, @intCast(i))] + @as(usize, @bitCast(@as(isize, @intCast(left))));
+            f[0].outputs[@as(usize, @intCast(i))] = f[0].channel_buffers[@as(usize, @intCast(i))] + @as(usize, @bitCast(@as(isize, @intCast(left))));
         }
     }
     if (channels != null) {
@@ -479,7 +479,7 @@ pub export fn stb_vorbis_get_frame_float(arg_f: [*c]stb_vorbis, arg_channels: [*
     {
         i = 0;
         while (i < f.*.channels) : (i += 1) {
-            f.*.outputs[@as(u32, @intCast(i))] = f.*.channel_buffers[@as(u32, @intCast(i))] + @as(usize, @bitCast(@as(isize, @intCast(left))));
+            f[0].outputs[@as(usize, @intCast(i))] = f[0].channel_buffers[@as(usize, @intCast(i))] + @as(usize, @bitCast(@as(isize, @intCast(left))));
         }
     }
     f.*.channel_buffer_start = left;
@@ -579,7 +579,7 @@ pub export fn stb_vorbis_get_samples_float_interleaved(arg_f: [*c]stb_vorbis, ar
                             break :blk tmp;
                         }).* = (blk: {
                             const tmp = f.*.channel_buffer_start + j;
-                            if (tmp >= 0) break :blk f.*.channel_buffers[@as(u32, @intCast(i))] + @as(usize, @intCast(tmp)) else break :blk f.*.channel_buffers[@as(u32, @intCast(i))] - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                            if (tmp >= 0) break :blk f[0].channel_buffers[@as(usize, @intCast(i))] + @as(usize, @intCast(tmp)) else break :blk f[0].channel_buffers[@as(usize, @intCast(i))] - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                         }).*;
                     }
                 }
@@ -617,7 +617,7 @@ pub export fn stb_vorbis_get_samples_float(f: [*c]stb_vorbis, channels: usize, b
             while (i < z) : (i += 1) {
                 @memcpy(
                     @as([*]u8, @ptrCast(buffer[i]))[0 .. @sizeOf(f32) * k],
-                    @as([*]const u8, @ptrCast(f.*.channel_buffers[i] + @as(usize, @intCast(f.*.channel_buffer_start)))),
+                    @as([*]const u8, @ptrCast(f[0].channel_buffers[i] + @as(usize, @intCast(f.*.channel_buffer_start)))),
                 );
             }
             while (i < channels) : (i += 1) {
@@ -1114,7 +1114,7 @@ pub fn compute_accelerated_huffman(arg_c: [*c]Codebook) callconv(.c) void {
     {
         i = 0;
         while (i < (@as(c_int, 1) << @intCast(10))) : (i += 1) {
-            c.*.fast_huffman[@as(u32, @intCast(i))] = @as(int16, @bitCast(@as(c_short, @truncate(-@as(c_int, 1)))));
+            c[0].fast_huffman[@as(usize, @intCast(i))] = @as(int16, @bitCast(@as(c_short, @truncate(-@as(c_int, 1)))));
         }
     }
     len = if (@as(c_int, @bitCast(@as(u32, c.*.sparse))) != 0) c.*.sorted_entries else c.*.entries;
@@ -1137,7 +1137,7 @@ pub fn compute_accelerated_huffman(arg_c: [*c]Codebook) callconv(.c) void {
                 }).*;
                 _ = &z;
                 while (z < @as(u32, @bitCast(@as(c_int, 1) << @intCast(10)))) {
-                    c.*.fast_huffman[z] = @as(int16, @bitCast(@as(c_short, @truncate(i))));
+                    c[0].fast_huffman[@as(usize, z)] = @as(int16, @bitCast(@as(c_short, @truncate(i))));
                     z +%= @as(u32, @bitCast(@as(c_int, 1) << @intCast(@as(c_int, @bitCast(@as(u32, (blk: {
                         const tmp = i;
                         if (tmp >= 0) break :blk c.*.codeword_lengths + @as(usize, @intCast(tmp)) else break :blk c.*.codeword_lengths - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -1437,17 +1437,17 @@ pub fn init_blocksize(arg_f: [*c]vorb, arg_b: c_int, arg_n: c_int) callconv(.c) 
     _ = &n4;
     var n8: c_int = n >> @intCast(3);
     _ = &n8;
-    f.*.A[@as(u32, @intCast(b))] = @as([*c]f32, @ptrCast(@alignCast(setup_malloc(f, @as(c_int, @bitCast(@as(u32, @truncate(@sizeOf(f32) *% @as(c_ulong, @bitCast(@as(c_long, n2)))))))))));
-    f.*.B[@as(u32, @intCast(b))] = @as([*c]f32, @ptrCast(@alignCast(setup_malloc(f, @as(c_int, @bitCast(@as(u32, @truncate(@sizeOf(f32) *% @as(c_ulong, @bitCast(@as(c_long, n2)))))))))));
-    f.*.C[@as(u32, @intCast(b))] = @as([*c]f32, @ptrCast(@alignCast(setup_malloc(f, @as(c_int, @bitCast(@as(u32, @truncate(@sizeOf(f32) *% @as(c_ulong, @bitCast(@as(c_long, n4)))))))))));
-    if ((!(f.*.A[@as(u32, @intCast(b))] != null) or !(f.*.B[@as(u32, @intCast(b))] != null)) or !(f.*.C[@as(u32, @intCast(b))] != null)) return @"error"(f, @as(u32, @bitCast(VORBIS_outofmem)));
-    compute_twiddle_factors(n, f.*.A[@as(u32, @intCast(b))], f.*.B[@as(u32, @intCast(b))], f.*.C[@as(u32, @intCast(b))]);
-    f.*.window[@as(u32, @intCast(b))] = @as([*c]f32, @ptrCast(@alignCast(setup_malloc(f, @as(c_int, @bitCast(@as(u32, @truncate(@sizeOf(f32) *% @as(c_ulong, @bitCast(@as(c_long, n2)))))))))));
-    if (!(f.*.window[@as(u32, @intCast(b))] != null)) return @"error"(f, @as(u32, @bitCast(VORBIS_outofmem)));
-    compute_window(n, f.*.window[@as(u32, @intCast(b))]);
-    f.*.bit_reverse[@as(u32, @intCast(b))] = @as([*c]uint16, @ptrCast(@alignCast(setup_malloc(f, @as(c_int, @bitCast(@as(u32, @truncate(@sizeOf(uint16) *% @as(c_ulong, @bitCast(@as(c_long, n8)))))))))));
-    if (!(f.*.bit_reverse[@as(u32, @intCast(b))] != null)) return @"error"(f, @as(u32, @bitCast(VORBIS_outofmem)));
-    compute_bitreverse(n, f.*.bit_reverse[@as(u32, @intCast(b))]);
+    f[0].A[@as(usize, @intCast(b))] = @as([*c]f32, @ptrCast(@alignCast(setup_malloc(f, @as(c_int, @bitCast(@as(u32, @truncate(@sizeOf(f32) *% @as(c_ulong, @bitCast(@as(c_long, n2)))))))))));
+    f[0].B[@as(usize, @intCast(b))] = @as([*c]f32, @ptrCast(@alignCast(setup_malloc(f, @as(c_int, @bitCast(@as(u32, @truncate(@sizeOf(f32) *% @as(c_ulong, @bitCast(@as(c_long, n2)))))))))));
+    f[0].C[@as(usize, @intCast(b))] = @as([*c]f32, @ptrCast(@alignCast(setup_malloc(f, @as(c_int, @bitCast(@as(u32, @truncate(@sizeOf(f32) *% @as(c_ulong, @bitCast(@as(c_long, n4)))))))))));
+    if ((!(f[0].A[@as(usize, @intCast(b))] != null) or !(f[0].B[@as(usize, @intCast(b))] != null)) or !(f[0].C[@as(usize, @intCast(b))] != null)) return @"error"(f, @as(u32, @bitCast(VORBIS_outofmem)));
+    compute_twiddle_factors(n, f[0].A[@as(usize, @intCast(b))], f[0].B[@as(usize, @intCast(b))], f[0].C[@as(usize, @intCast(b))]);
+    f[0].window[@as(usize, @intCast(b))] = @as([*c]f32, @ptrCast(@alignCast(setup_malloc(f, @as(c_int, @bitCast(@as(u32, @truncate(@sizeOf(f32) *% @as(c_ulong, @bitCast(@as(c_long, n2)))))))))));
+    if (!(f[0].window[@as(usize, @intCast(b))] != null)) return @"error"(f, @as(u32, @bitCast(VORBIS_outofmem)));
+    compute_window(n, f[0].window[@as(usize, @intCast(b))]);
+    f[0].bit_reverse[@as(usize, @intCast(b))] = @as([*c]uint16, @ptrCast(@alignCast(setup_malloc(f, @as(c_int, @bitCast(@as(u32, @truncate(@sizeOf(uint16) *% @as(c_ulong, @bitCast(@as(c_long, n8)))))))))));
+    if (!(f[0].bit_reverse[@as(usize, @intCast(b))] != null)) return @"error"(f, @as(u32, @bitCast(VORBIS_outofmem)));
+    compute_bitreverse(n, f[0].bit_reverse[@as(usize, @intCast(b))]);
     return 1;
 }
 pub fn neighbors(arg_x: [*c]uint16, arg_n: c_int, arg_plow: [*c]c_int, arg_phigh: [*c]c_int) callconv(.c) void {
@@ -1621,7 +1621,7 @@ pub fn start_page_no_capturepattern(arg_f: [*c]vorb) callconv(.c) c_int {
         _ = &i;
         {
             i = f.*.segment_count - @as(c_int, 1);
-            while (i >= @as(c_int, 0)) : (i -= 1) if (@as(c_int, @bitCast(@as(u32, f.*.segments[@as(u32, @intCast(i))]))) < @as(c_int, 255)) break;
+            while (i >= @as(c_int, 0)) : (i -= 1) if (@as(c_int, @bitCast(@as(u32, f[0].segments[@as(usize, @intCast(i))]))) < @as(c_int, 255)) break;
         }
         if (i >= @as(c_int, 0)) {
             f.*.end_seg_with_known_loc = i;
@@ -1637,7 +1637,7 @@ pub fn start_page_no_capturepattern(arg_f: [*c]vorb) callconv(.c) c_int {
         {
             i = 0;
             while (i < f.*.segment_count) : (i += 1) {
-                len += @as(c_int, @bitCast(@as(u32, f.*.segments[@as(u32, @intCast(i))])));
+                len += @as(c_int, @bitCast(@as(u32, f[0].segments[@as(usize, @intCast(i))])));
             }
         }
         len += @as(c_int, 27) + f.*.segment_count;
@@ -1700,8 +1700,8 @@ pub fn next_segment(arg_f: [*c]vorb) callconv(.c) c_int {
         }
         if (!((@as(c_int, @bitCast(@as(u32, f.*.page_flag))) & @as(c_int, 1)) != 0)) return @"error"(f, @as(u32, @bitCast(VORBIS_continued_packet_flag_invalid)));
     }
-    len = @as(c_int, @bitCast(@as(u32, f.*.segments[
-        @as(u32, @intCast(blk: {
+    len = @as(c_int, @bitCast(@as(u32, f[0].segments[
+        @as(usize, @intCast(blk: {
             const ref = &f.*.next_seg;
             const tmp = ref.*;
             ref.* += 1;
@@ -1902,7 +1902,7 @@ pub fn codebook_decode_scalar(arg_f: [*c]vorb, arg_c: [*c]Codebook) callconv(.c)
     }
 
     const idx = f.*.acc & @as(u32, FAST_HUFFMAN_TABLE_MASK);
-    const code_index = @as(c_int, c.*.fast_huffman[@as(usize, idx)]);
+    const code_index = @as(c_int, c[0].fast_huffman[@as(usize, idx)]);
     if (code_index >= 0) {
         const len = c.*.codeword_lengths[@as(usize, @intCast(code_index))];
         f.*.acc >>= @intCast(len);
@@ -1930,7 +1930,7 @@ pub fn codebook_decode_start(arg_f: [*c]vorb, arg_c: [*c]Codebook) callconv(.c) 
             prep_huffman(f);
         }
         z = @as(c_int, @bitCast(f.*.acc & @as(u32, @bitCast((@as(c_int, 1) << @intCast(10)) - @as(c_int, 1)))));
-        z = @as(c_int, @bitCast(@as(c_int, c.*.fast_huffman[@as(u32, @intCast(z))])));
+        z = @as(c_int, @bitCast(@as(c_int, c[0].fast_huffman[@as(usize, @intCast(z))])));
         if (z >= @as(c_int, 0)) {
             var n: c_int = @as(c_int, @bitCast(@as(u32, (blk: {
                 const tmp = z;
@@ -2086,7 +2086,7 @@ pub fn codebook_decode_deinterleave_repeat(arg_f: [*c]vorb, arg_c: [*c]Codebook,
             prep_huffman(f);
         }
         z = @as(c_int, @bitCast(f.*.acc & @as(u32, @bitCast((@as(c_int, 1) << @intCast(10)) - @as(c_int, 1)))));
-        z = @as(c_int, @bitCast(@as(c_int, c.*.fast_huffman[@as(u32, @intCast(z))])));
+        z = @as(c_int, @bitCast(@as(c_int, c[0].fast_huffman[@as(usize, @intCast(z))])));
         if (z >= @as(c_int, 0)) {
             var n: c_int = @as(c_int, @bitCast(@as(u32, (blk: {
                 const tmp = z;
@@ -2582,7 +2582,7 @@ pub export fn decode_residue(arg_f: [*c]vorb, arg_residue_buffers: [*c][*c]f32, 
     const do_not_decode = arg_do_not_decode;
 
     const r = f.*.residue_config + @as(usize, @intCast(rn));
-    const rtype = f.*.residue_types[@as(usize, @intCast(rn))];
+    const rtype = f[0].residue_types[@as(usize, @intCast(rn))];
     const c = r.*.classbook;
     const classwords = f.*.codebooks[@as(usize, @intCast(c))].dimensions;
     const actual_size: u32 = if (rtype == 2) @as(u32, @intCast(n * 2)) else @as(u32, @intCast(n));
@@ -3626,7 +3626,7 @@ pub export fn inverse_mdct(arg_buffer: [*c]f32, arg_n: c_int, arg_f: [*c]vorb, a
     var u: [*c]f32 = null;
     var v: [*c]f32 = null;
 
-    const A = f.*.A[@as(usize, @intCast(blocktype))];
+    const A = f[0].A[@as(usize, @intCast(blocktype))];
 
     // Merged: copy and reflect spectral data + step 0
     {
@@ -3729,7 +3729,7 @@ pub export fn inverse_mdct(arg_buffer: [*c]f32, arg_n: c_int, arg_f: [*c]vorb, a
 
     // Step 4, 5, and 6
     {
-        const bitrev = f.*.bit_reverse[@as(usize, @intCast(blocktype))];
+        const bitrev = f[0].bit_reverse[@as(usize, @intCast(blocktype))];
         var d0 = v + @as(usize, @intCast(n4 - 4));
         var d1 = v + @as(usize, @intCast(n2 - 4));
         var bitrev_ptr = bitrev;
@@ -3760,7 +3760,7 @@ pub export fn inverse_mdct(arg_buffer: [*c]f32, arg_n: c_int, arg_f: [*c]vorb, a
 
     // Step 7
     {
-        const cblock = f.*.C[@as(usize, @intCast(blocktype))];
+        const cblock = f[0].C[@as(usize, @intCast(blocktype))];
         var d = v;
         var e = v + @as(usize, @intCast(n2 - 4));
         var C_ptr = cblock;
@@ -3802,7 +3802,7 @@ pub export fn inverse_mdct(arg_buffer: [*c]f32, arg_n: c_int, arg_f: [*c]vorb, a
 
     // Step 8 + decode
     {
-        var B = f.*.B[@as(usize, @intCast(blocktype))] + @as(usize, @intCast(n2 - 8));
+        var B = f[0].B[@as(usize, @intCast(blocktype))] + @as(usize, @intCast(n2 - 8));
         var e = buf2 + @as(usize, @intCast(n2 - 8));
         var d0 = buffer;
         var d1 = buffer + @as(usize, @intCast(n2 - 4));
@@ -3860,8 +3860,8 @@ pub fn get_window(arg_f: [*c]vorb, arg_len: c_int) callconv(.c) [*c]f32 {
     var len = arg_len;
     _ = &len;
     len <<= @intCast(@as(c_int, 1));
-    if (len == f.*.blocksize_0) return f.*.window[@as(u32, @intCast(@as(c_int, 0)))];
-    if (len == f.*.blocksize_1) return f.*.window[@as(u32, @intCast(@as(c_int, 1)))];
+    if (len == f.*.blocksize_0) return f[0].window[0];
+    if (len == f.*.blocksize_1) return f[0].window[1];
     return null;
 }
 pub const YTYPE = int16;
@@ -3889,8 +3889,8 @@ pub fn do_floor(arg_f: [*c]vorb, arg_map: [*c]Mapping, arg_i: c_int, arg_n: c_in
     _ = &s;
     var floor_1: c_int = undefined;
     _ = &floor_1;
-    floor_1 = @as(c_int, @bitCast(@as(u32, map.*.submap_floor[@as(u32, @intCast(s))])));
-    if (@as(c_int, @bitCast(@as(u32, f.*.floor_types[@as(u32, @intCast(floor_1))]))) == @as(c_int, 0)) {
+    floor_1 = @as(c_int, @bitCast(@as(u32, map[0].submap_floor[@as(usize, @intCast(s))])));
+    if (@as(c_int, @bitCast(@as(u32, f[0].floor_types[@as(usize, @intCast(floor_1))]))) == @as(c_int, 0)) {
         return @"error"(f, @as(u32, @bitCast(VORBIS_invalid_stream)));
     } else {
         var g: [*c]Floor1 = &(blk: {
@@ -3909,7 +3909,7 @@ pub fn do_floor(arg_f: [*c]vorb, arg_map: [*c]Mapping, arg_i: c_int, arg_n: c_in
         {
             q = 1;
             while (q < g.*.values) : (q += 1) {
-                j = @as(c_int, @bitCast(@as(u32, g.*.sorted_order[@as(u32, @intCast(q))])));
+                j = @as(c_int, @bitCast(@as(u32, g[0].sorted_order[@as(usize, @intCast(q))])));
                 _ = @sizeOf([*c]u8);
                 if (@as(c_int, @bitCast(@as(c_int, (blk: {
                     const tmp = j;
@@ -3920,7 +3920,7 @@ pub fn do_floor(arg_f: [*c]vorb, arg_map: [*c]Mapping, arg_i: c_int, arg_n: c_in
                         if (tmp >= 0) break :blk finalY + @as(usize, @intCast(tmp)) else break :blk finalY - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                     }).*))) * @as(c_int, @bitCast(@as(u32, g.*.floor1_multiplier)));
                     _ = &hy;
-                    var hx: c_int = @as(c_int, @bitCast(@as(u32, g.*.Xlist[@as(u32, @intCast(j))])));
+                    var hx: c_int = @as(c_int, @bitCast(@as(u32, g[0].Xlist[@as(usize, @intCast(j))])));
                     _ = &hx;
                     if (lx != hx) {
                         draw_line(target, lx, ly, hx, hy, n2);
@@ -3988,7 +3988,7 @@ pub export fn vorbis_decode_initial(arg_f: [*c]vorb, arg_p_left_start: [*c]c_int
         if (mode_index >= @as(u32, @bitCast(f.*.mode_count))) return FALSE;
 
         mode.* = @as(c_int, @bitCast(mode_index));
-        const m_ptr = &f.*.mode_config[@as(usize, @intCast(mode.*))];
+        const m_ptr = &f[0].mode_config[@as(usize, @intCast(mode.*))];
 
         var n: c_int = undefined;
         var prev: c_int = undefined;
@@ -4034,7 +4034,7 @@ pub export fn vorbis_decode_packet_rest(arg_f: [*c]vorb, arg_len: [*c]c_int, arg
     const p_left = arg_p_left;
 
     const block_size_index = m.*.blockflag;
-    const n = f.*.blocksize[@as(usize, block_size_index)];
+    const n = f[0].blocksize[@as(usize, block_size_index)];
     const n2 = n >> @intCast(1);
     const map = f.*.mapping + @as(usize, m.*.mapping);
 
@@ -4047,10 +4047,10 @@ pub export fn vorbis_decode_packet_rest(arg_f: [*c]vorb, arg_len: [*c]c_int, arg
     while (ch_index < f.*.channels) : (ch_index += 1) {
         const chan = map.*.chan + @as(usize, @intCast(ch_index));
         const mux = chan.*.mux;
-        const floor_index = map.*.submap_floor[@as(usize, mux)];
+        const floor_index = map[0].submap_floor[@as(usize, mux)];
         zero_channel[@as(usize, @intCast(ch_index))] = FALSE;
 
-        if (f.*.floor_types[@as(usize, floor_index)] == 0) {
+        if (f[0].floor_types[@as(usize, floor_index)] == 0) {
             return @"error"(f, @as(u32, @bitCast(VORBIS_invalid_stream)));
         }
 
@@ -4109,8 +4109,8 @@ pub export fn vorbis_decode_packet_rest(arg_f: [*c]vorb, arg_len: [*c]c_int, arg
                 const low = floor_conf.*.neighbors[@as(usize, @intCast(j))][0];
                 const high = floor_conf.*.neighbors[@as(usize, @intCast(j))][1];
                 const x = floor_conf.*.Xlist[@as(usize, @intCast(j))];
-                const pred = predict_point(@as(c_int, x), @as(c_int, floor_conf.*.Xlist[@as(usize, low)]), @as(c_int, floor_conf.*.Xlist[@as(usize, high)]), finalY[@as(usize, low)], finalY[@as(usize, high)]);
-                var val = @as(c_int, finalY[@as(usize, @intCast(j))]);
+                const pred = predict_point(@as(c_int, x), @as(c_int, floor_conf.*.Xlist[@as(usize, low)]), @as(c_int, floor_conf.*.Xlist[@as(usize, high)]), finalY[0][@as(usize, low)], finalY[0][@as(usize, high)]);
+                var val = @as(c_int, finalY[0][@as(usize, @intCast(j))]);
                 const highroom = range - pred;
                 const lowroom = pred;
                 const room = if (highroom < lowroom) highroom * 2 else lowroom * 2;
@@ -4140,7 +4140,7 @@ pub export fn vorbis_decode_packet_rest(arg_f: [*c]vorb, arg_len: [*c]c_int, arg
             var idx: c_int = 0;
             while (idx < floor_conf.*.values) : (idx += 1) {
                 if (step2_flag[@as(usize, @intCast(idx))] == 0) {
-                    finalY[@as(usize, @intCast(idx))] = -1;
+                    finalY[0][@as(usize, @intCast(idx))] = -1;
                 }
             }
         } else {
@@ -4182,13 +4182,13 @@ pub export fn vorbis_decode_packet_rest(arg_f: [*c]vorb, arg_len: [*c]c_int, arg
                     residue_buffers[@as(usize, @intCast(ch))] = undefined;
                 } else {
                     do_not_decode[@as(usize, @intCast(ch))] = FALSE;
-                    residue_buffers[@as(usize, @intCast(ch))] = f.*.channel_buffers[@as(usize, @intCast(ci))];
+                    residue_buffers[@as(usize, @intCast(ch))] = f[0].channel_buffers[@as(usize, @intCast(ci))];
                 }
                 ch += 1;
             }
         }
 
-        const residue_index = map.*.submap_residue[@as(usize, @intCast(submap))];
+        const residue_index = map[0].submap_residue[@as(usize, @intCast(submap))];
         decode_residue(f, @as([*c][*c]f32, @ptrCast(&residue_buffers)), ch, n2, residue_index, @as([*c]u8, @ptrCast(&do_not_decode)));
     }
 
@@ -4202,8 +4202,8 @@ pub export fn vorbis_decode_packet_rest(arg_f: [*c]vorb, arg_len: [*c]c_int, arg
     while (cs >= 0) : (cs -= 1) {
         const magnitude = map.*.chan[@as(usize, @intCast(cs))].magnitude;
         const angle = map.*.chan[@as(usize, @intCast(cs))].angle;
-        var m_buf = f.*.channel_buffers[@as(usize, magnitude)];
-        var a_buf = f.*.channel_buffers[@as(usize, angle)];
+        var m_buf = f[0].channel_buffers[@as(usize, magnitude)];
+        var a_buf = f[0].channel_buffers[@as(usize, angle)];
         var idx: c_int = 0;
         while (idx < n2) : (idx += 1) {
             const mag = m_buf[@as(usize, @intCast(idx))];
@@ -4230,9 +4230,9 @@ pub export fn vorbis_decode_packet_rest(arg_f: [*c]vorb, arg_len: [*c]c_int, arg
     var ch_idx: c_int = 0;
     while (ch_idx < f.*.channels) : (ch_idx += 1) {
         if (really_zero_channel[@as(usize, @intCast(ch_idx))] != 0) {
-            @memset(f.*.channel_buffers[@as(usize, @intCast(ch_idx))][0..@as(usize, @intCast(n2))], 0);
+            @memset(f[0].channel_buffers[@as(usize, @intCast(ch_idx))][0..@as(usize, @intCast(n2))], 0);
         } else {
-            _ = do_floor(f, map, ch_idx, n, f.*.channel_buffers[@as(usize, @intCast(ch_idx))], f.*.finalY[@as(usize, @intCast(ch_idx))], null);
+            _ = do_floor(f, map, ch_idx, n, f[0].channel_buffers[@as(usize, @intCast(ch_idx))], f[0].finalY[@as(usize, @intCast(ch_idx))], null);
         }
     }
 
@@ -4240,7 +4240,7 @@ pub export fn vorbis_decode_packet_rest(arg_f: [*c]vorb, arg_len: [*c]c_int, arg
 
     ch_idx = 0;
     while (ch_idx < f.*.channels) : (ch_idx += 1) {
-        inverse_mdct(f.*.channel_buffers[@as(usize, @intCast(ch_idx))], n, f, m.*.blockflag);
+        inverse_mdct(f[0].channel_buffers[@as(usize, @intCast(ch_idx))], n, f, m.*.blockflag);
     }
 
     CHECK(f);
@@ -4348,16 +4348,16 @@ pub fn vorbis_finish_frame(arg_f: [*c]stb_vorbis, arg_len: c_int, arg_left: c_in
                     while (j_2 < n) : (j_2 += 1) {
                         (blk: {
                             const tmp = left + j_2;
-                            if (tmp >= 0) break :blk f.*.channel_buffers[@as(u32, @intCast(i_1))] + @as(usize, @intCast(tmp)) else break :blk f.*.channel_buffers[@as(u32, @intCast(i_1))] - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                            if (tmp >= 0) break :blk f[0].channel_buffers[@as(usize, @intCast(i_1))] + @as(usize, @intCast(tmp)) else break :blk f[0].channel_buffers[@as(usize, @intCast(i_1))] - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                         }).* = ((blk: {
                             const tmp = left + j_2;
-                            if (tmp >= 0) break :blk f.*.channel_buffers[@as(u32, @intCast(i_1))] + @as(usize, @intCast(tmp)) else break :blk f.*.channel_buffers[@as(u32, @intCast(i_1))] - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                            if (tmp >= 0) break :blk f[0].channel_buffers[@as(usize, @intCast(i_1))] + @as(usize, @intCast(tmp)) else break :blk f[0].channel_buffers[@as(usize, @intCast(i_1))] - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                         }).* * (blk: {
                             const tmp = j_2;
                             if (tmp >= 0) break :blk w + @as(usize, @intCast(tmp)) else break :blk w - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                         }).*) + ((blk: {
                             const tmp = j_2;
-                            if (tmp >= 0) break :blk f.*.previous_window[@as(u32, @intCast(i_1))] + @as(usize, @intCast(tmp)) else break :blk f.*.previous_window[@as(u32, @intCast(i_1))] - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                            if (tmp >= 0) break :blk f[0].previous_window[@as(usize, @intCast(i_1))] + @as(usize, @intCast(tmp)) else break :blk f[0].previous_window[@as(usize, @intCast(i_1))] - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                         }).* * (blk: {
                             const tmp = (n - @as(c_int, 1)) - j_2;
                             if (tmp >= 0) break :blk w + @as(usize, @intCast(tmp)) else break :blk w - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -4376,10 +4376,10 @@ pub fn vorbis_finish_frame(arg_f: [*c]stb_vorbis, arg_len: c_int, arg_left: c_in
             while ((right + j) < len) : (j += 1) {
                 (blk: {
                     const tmp = j;
-                    if (tmp >= 0) break :blk f.*.previous_window[@as(u32, @intCast(i))] + @as(usize, @intCast(tmp)) else break :blk f.*.previous_window[@as(u32, @intCast(i))] - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    if (tmp >= 0) break :blk f[0].previous_window[@as(usize, @intCast(i))] + @as(usize, @intCast(tmp)) else break :blk f[0].previous_window[@as(usize, @intCast(i))] - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).* = (blk: {
                     const tmp = right + j;
-                    if (tmp >= 0) break :blk f.*.channel_buffers[@as(u32, @intCast(i))] + @as(usize, @intCast(tmp)) else break :blk f.*.channel_buffers[@as(u32, @intCast(i))] - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    if (tmp >= 0) break :blk f[0].channel_buffers[@as(usize, @intCast(i))] + @as(usize, @intCast(tmp)) else break :blk f[0].channel_buffers[@as(usize, @intCast(i))] - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
             }
         }
@@ -4413,8 +4413,8 @@ pub fn is_whole_packet_present(arg_f: [*c]stb_vorbis) callconv(.c) c_int {
     _ = &p;
     if (s != -@as(c_int, 1)) {
         while (s < f.*.segment_count) : (s += 1) {
-            p += @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, @bitCast(@as(u32, f.*.segments[@as(u32, @intCast(s))])))))));
-            if (@as(c_int, @bitCast(@as(u32, f.*.segments[@as(u32, @intCast(s))]))) < @as(c_int, 255)) break;
+            p += @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, @bitCast(@as(u32, f[0].segments[@as(usize, @intCast(s))])))))));
+            if (@as(c_int, @bitCast(@as(u32, f[0].segments[@as(usize, @intCast(s))]))) < @as(c_int, 255)) break;
         }
         if (s == f.*.segment_count) {
             s = -@as(c_int, 1);
@@ -4484,8 +4484,8 @@ pub fn start_decoder(arg_f: [*c]vorb) !c_int {
         return @"error"(f, @as(u32, @bitCast(VORBIS_invalid_first_page)));
     }
 
-    if (f.*.segments[0] != 30) {
-        if (f.*.segments[0] == 64 and getn(f, @as([*c]u8, @ptrCast(&header)), 6) != 0 and
+    if (f[0].segments[0] != 30) {
+        if (f[0].segments[0] == 64 and getn(f, @as([*c]u8, @ptrCast(&header)), 6) != 0 and
             header[0] == 'f' and header[1] == 'i' and header[2] == 's' and
             header[3] == 'h' and header[4] == 'e' and header[5] == 'a' and
             get8(f) == 'd' and get8(f) == '\x00')
@@ -4858,9 +4858,9 @@ pub fn start_decoder(arg_f: [*c]vorb) !c_int {
 
     i = 0;
     while (i < f.*.floor_count) : (i += 1) {
-        f.*.floor_types[@as(usize, @intCast(i))] = @as(uint16, @intCast(get_bits(f, 16)));
-        if (f.*.floor_types[@as(usize, @intCast(i))] > 1) return @"error"(f, @as(u32, @bitCast(VORBIS_invalid_setup)));
-        if (f.*.floor_types[@as(usize, @intCast(i))] == 0) {
+        f[0].floor_types[@as(usize, @intCast(i))] = @as(uint16, @intCast(get_bits(f, 16)));
+        if (f[0].floor_types[@as(usize, @intCast(i))] > 1) return @"error"(f, @as(u32, @bitCast(VORBIS_invalid_setup)));
+        if (f[0].floor_types[@as(usize, @intCast(i))] == 0) {
             const g = &f.*.floor_config[@as(usize, @intCast(i))].floor0;
             g.*.order = @intCast(get_bits(f, 8));
             g.*.rate = @as(uint16, @intCast(get_bits(f, 16)));
@@ -4958,8 +4958,8 @@ pub fn start_decoder(arg_f: [*c]vorb) !c_int {
     while (i < f.*.residue_count) : (i += 1) {
         var residue_cascade: [64]u8 = undefined;
         const r = f.*.residue_config + @as(usize, @intCast(i));
-        f.*.residue_types[@as(usize, @intCast(i))] = @as(uint16, @intCast(get_bits(f, 16)));
-        if (f.*.residue_types[@as(usize, @intCast(i))] > 2) return @"error"(f, @as(u32, @bitCast(VORBIS_invalid_setup)));
+        f[0].residue_types[@as(usize, @intCast(i))] = @as(uint16, @intCast(get_bits(f, 16)));
+        if (f[0].residue_types[@as(usize, @intCast(i))] > 2) return @"error"(f, @as(u32, @bitCast(VORBIS_invalid_setup)));
         r.*.begin = get_bits(f, 24);
         r.*.end = get_bits(f, 24);
         if (r.*.end < r.*.begin) return @"error"(f, @as(u32, @bitCast(VORBIS_invalid_setup)));
@@ -5073,12 +5073,12 @@ pub fn start_decoder(arg_f: [*c]vorb) !c_int {
         var j: c_int = 0;
         while (j < @as(c_int, @intCast(m.*.submaps))) : (j += 1) {
             _ = get_bits(f, 8);
-            m.*.submap_floor[@as(usize, @intCast(j))] = @intCast(get_bits(f, 8));
-            m.*.submap_residue[@as(usize, @intCast(j))] = @intCast(get_bits(f, 8));
-            if (@as(c_int, @intCast(m.*.submap_floor[@as(usize, @intCast(j))])) >= f.*.floor_count) {
+            m[0].submap_floor[@as(usize, @intCast(j))] = @intCast(get_bits(f, 8));
+            m[0].submap_residue[@as(usize, @intCast(j))] = @intCast(get_bits(f, 8));
+            if (@as(c_int, @intCast(m[0].submap_floor[@as(usize, @intCast(j))])) >= f.*.floor_count) {
                 return @"error"(f, @as(u32, @bitCast(VORBIS_invalid_setup)));
             }
-            if (@as(c_int, @intCast(m.*.submap_residue[@as(usize, @intCast(j))])) >= f.*.residue_count) {
+            if (@as(c_int, @intCast(m[0].submap_residue[@as(usize, @intCast(j))])) >= f.*.residue_count) {
                 return @"error"(f, @as(u32, @bitCast(VORBIS_invalid_setup)));
             }
         }
@@ -5088,17 +5088,17 @@ pub fn start_decoder(arg_f: [*c]vorb) !c_int {
     f.*.mode_count = @as(c_int, @intCast(get_bits(f, 6) + 1));
     i = 0;
     while (i < f.*.mode_count) : (i += 1) {
-        f.*.mode_config[@as(usize, @intCast(i))].blockflag = @intCast(get_bits(f, 1));
-        f.*.mode_config[@as(usize, @intCast(i))].windowtype = @as(uint16, @intCast(get_bits(f, 16)));
-        f.*.mode_config[@as(usize, @intCast(i))].transformtype = @as(uint16, @intCast(get_bits(f, 16)));
-        f.*.mode_config[@as(usize, @intCast(i))].mapping = @intCast(get_bits(f, 8));
-        if (f.*.mode_config[@as(usize, @intCast(i))].windowtype != 0) {
+        f[0].mode_config[@as(usize, @intCast(i))].blockflag = @intCast(get_bits(f, 1));
+        f[0].mode_config[@as(usize, @intCast(i))].windowtype = @as(uint16, @intCast(get_bits(f, 16)));
+        f[0].mode_config[@as(usize, @intCast(i))].transformtype = @as(uint16, @intCast(get_bits(f, 16)));
+        f[0].mode_config[@as(usize, @intCast(i))].mapping = @intCast(get_bits(f, 8));
+        if (f[0].mode_config[@as(usize, @intCast(i))].windowtype != 0) {
             return @"error"(f, @as(u32, @bitCast(VORBIS_invalid_setup)));
         }
-        if (f.*.mode_config[@as(usize, @intCast(i))].transformtype != 0) {
+        if (f[0].mode_config[@as(usize, @intCast(i))].transformtype != 0) {
             return @"error"(f, @as(u32, @bitCast(VORBIS_invalid_setup)));
         }
-        if (@as(c_int, @intCast(f.*.mode_config[@as(usize, @intCast(i))].mapping)) >= f.*.mapping_count) {
+        if (@as(c_int, @intCast(f[0].mode_config[@as(usize, @intCast(i))].mapping)) >= f.*.mapping_count) {
             return @"error"(f, @as(u32, @bitCast(VORBIS_invalid_setup)));
         }
     }
@@ -5109,27 +5109,27 @@ pub fn start_decoder(arg_f: [*c]vorb) !c_int {
 
     var j: c_int = 0;
     while (j < f.*.channels) : (j += 1) {
-        f.*.channel_buffers[@as(usize, @intCast(j))] = @as([*c]f32, @ptrCast(@alignCast(setup_malloc(f, @intCast(@sizeOf(f32) * f.*.blocksize_1)))));
-        f.*.previous_window[@as(usize, @intCast(j))] = @as([*c]f32, @ptrCast(@alignCast(setup_malloc(f, @intCast(@sizeOf(f32) * (f.*.blocksize_1 >> @intCast(1)))))));
-        f.*.finalY[@as(usize, @intCast(j))] = @as([*c]int16, @ptrCast(@alignCast(setup_malloc(f, @intCast(@sizeOf(int16) * @as(usize, @intCast(longest_floorlist)))))));
-        if (f.*.channel_buffers[@as(usize, @intCast(j))] == null or f.*.previous_window[@as(usize, @intCast(j))] == null or f.*.finalY[@as(usize, @intCast(j))] == null) {
+        f[0].channel_buffers[@as(usize, @intCast(j))] = @as([*c]f32, @ptrCast(@alignCast(setup_malloc(f, @intCast(@sizeOf(f32) * f.*.blocksize_1)))));
+        f[0].previous_window[@as(usize, @intCast(j))] = @as([*c]f32, @ptrCast(@alignCast(setup_malloc(f, @intCast(@sizeOf(f32) * (f.*.blocksize_1 >> @intCast(1)))))));
+        f[0].finalY[@as(usize, @intCast(j))] = @as([*c]int16, @ptrCast(@alignCast(setup_malloc(f, @intCast(@sizeOf(int16) * @as(usize, @intCast(longest_floorlist)))))));
+        if (f[0].channel_buffers[@as(usize, @intCast(j))] == null or f[0].previous_window[@as(usize, @intCast(j))] == null or f[0].finalY[@as(usize, @intCast(j))] == null) {
             return @"error"(f, @as(u32, @bitCast(VORBIS_outofmem)));
         }
-        @memset(f.*.channel_buffers[@as(usize, @intCast(j))][0..@as(usize, @intCast(f.*.blocksize_1))], 0);
+        @memset(f[0].channel_buffers[@as(usize, @intCast(j))][0..@as(usize, @intCast(f.*.blocksize_1))], 0);
     }
     if (f.*.channels < STB_VORBIS_MAX_CHANNELS) {
         var k: c_int = f.*.channels;
         while (k < @as(c_int, @intCast(STB_VORBIS_MAX_CHANNELS))) : (k += 1) {
-            f.*.channel_buffers[@as(usize, @intCast(k))] = null;
-            f.*.previous_window[@as(usize, @intCast(k))] = null;
-            f.*.finalY[@as(usize, @intCast(k))] = null;
+            f[0].channel_buffers[@as(usize, @intCast(k))] = null;
+            f[0].previous_window[@as(usize, @intCast(k))] = null;
+            f[0].finalY[@as(usize, @intCast(k))] = null;
         }
     }
 
     if (init_blocksize(f, 0, f.*.blocksize_0) == 0) return FALSE;
     if (init_blocksize(f, 1, f.*.blocksize_1) == 0) return FALSE;
-    f.*.blocksize[@as(usize, 0)] = f.*.blocksize_0;
-    f.*.blocksize[@as(usize, 1)] = f.*.blocksize_1;
+    f[0].blocksize[0] = f.*.blocksize_0;
+    f[0].blocksize[1] = f.*.blocksize_1;
 
     if (integer_divide_table[1][@as(usize, 1)] == 0) {
         i = 0;
@@ -5277,19 +5277,19 @@ pub fn vorbis_deinit(arg_p: [*c]stb_vorbis) callconv(.c) void {
     {
         i = 0;
         while ((i < p.*.channels) and (i < @as(c_int, 16))) : (i += 1) {
-            setup_free(p, @as(?*anyopaque, @ptrCast(p.*.channel_buffers[@as(u32, @intCast(i))])));
-            setup_free(p, @as(?*anyopaque, @ptrCast(p.*.previous_window[@as(u32, @intCast(i))])));
-            setup_free(p, @as(?*anyopaque, @ptrCast(p.*.finalY[@as(u32, @intCast(i))])));
+            setup_free(p, @as(?*anyopaque, @ptrCast(p[0].channel_buffers[@as(usize, @intCast(i))])));
+            setup_free(p, @as(?*anyopaque, @ptrCast(p[0].previous_window[@as(usize, @intCast(i))])));
+            setup_free(p, @as(?*anyopaque, @ptrCast(p[0].finalY[@as(usize, @intCast(i))])));
         }
     }
     {
         i = 0;
         while (i < @as(c_int, 2)) : (i += 1) {
-            setup_free(p, @as(?*anyopaque, @ptrCast(p.*.A[@as(u32, @intCast(i))])));
-            setup_free(p, @as(?*anyopaque, @ptrCast(p.*.B[@as(u32, @intCast(i))])));
-            setup_free(p, @as(?*anyopaque, @ptrCast(p.*.C[@as(u32, @intCast(i))])));
-            setup_free(p, @as(?*anyopaque, @ptrCast(p.*.window[@as(u32, @intCast(i))])));
-            setup_free(p, @as(?*anyopaque, @ptrCast(p.*.bit_reverse[@as(u32, @intCast(i))])));
+            setup_free(p, @as(?*anyopaque, @ptrCast(p[0].A[@as(usize, @intCast(i))])));
+            setup_free(p, @as(?*anyopaque, @ptrCast(p[0].B[@as(usize, @intCast(i))])));
+            setup_free(p, @as(?*anyopaque, @ptrCast(p[0].C[@as(usize, @intCast(i))])));
+            setup_free(p, @as(?*anyopaque, @ptrCast(p[0].window[@as(usize, @intCast(i))])));
+            setup_free(p, @as(?*anyopaque, @ptrCast(p[0].bit_reverse[@as(usize, @intCast(i))])));
         }
     }
 }
@@ -5328,7 +5328,7 @@ pub fn vorbis_search_for_page_pushdata(arg_f: [*c]vorb, arg_data: [*c]u8, arg_da
     {
         i = 0;
         while (i < f.*.page_crc_tests) : (i += 1) {
-            f.*.scan[@as(u32, @intCast(i))].bytes_done = 0;
+            f[0].scan[@as(usize, @intCast(i))].bytes_done = 0;
         }
     }
     if (f.*.page_crc_tests < @as(c_int, 4)) {
@@ -5390,9 +5390,9 @@ pub fn vorbis_search_for_page_pushdata(arg_f: [*c]vorb, arg_data: [*c]u8, arg_da
                             ref.* += 1;
                             break :blk tmp;
                         };
-                        f.*.scan[@as(u32, @intCast(n))].bytes_left = len - j;
-                        f.*.scan[@as(u32, @intCast(n))].crc_so_far = crc;
-                        f.*.scan[@as(u32, @intCast(n))].goal_crc = @as(u32, @bitCast(((@as(c_int, @bitCast(@as(u32, (blk: {
+                        f[0].scan[@as(usize, @intCast(n))].bytes_left = len - j;
+                        f[0].scan[@as(usize, @intCast(n))].crc_so_far = crc;
+                        f[0].scan[@as(usize, @intCast(n))].goal_crc = @as(u32, @bitCast(((@as(c_int, @bitCast(@as(u32, (blk: {
                             const tmp = i + @as(c_int, 22);
                             if (tmp >= 0) break :blk data + @as(usize, @intCast(tmp)) else break :blk data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                         }).*))) + (@as(c_int, @bitCast(@as(u32, (blk: {
@@ -5412,9 +5412,9 @@ pub fn vorbis_search_for_page_pushdata(arg_f: [*c]vorb, arg_data: [*c]u8, arg_da
                             }).*)))) - @as(c_int, 1);
                             if (tmp >= 0) break :blk data + @as(usize, @intCast(tmp)) else break :blk data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                         }).*))) == @as(c_int, 255)) {
-                            f.*.scan[@as(u32, @intCast(n))].sample_loc = @as(u32, @bitCast(~@as(c_int, 0)));
+                            f[0].scan[@as(usize, @intCast(n))].sample_loc = @as(u32, @bitCast(~@as(c_int, 0)));
                         } else {
-                            f.*.scan[@as(u32, @intCast(n))].sample_loc = @as(u32, @bitCast(((@as(c_int, @bitCast(@as(u32, (blk: {
+                            f[0].scan[@as(usize, @intCast(n))].sample_loc = @as(u32, @bitCast(((@as(c_int, @bitCast(@as(u32, (blk: {
                                 const tmp = i + @as(c_int, 6);
                                 if (tmp >= 0) break :blk data + @as(usize, @intCast(tmp)) else break :blk data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                             }).*))) + (@as(c_int, @bitCast(@as(u32, (blk: {
@@ -5428,7 +5428,7 @@ pub fn vorbis_search_for_page_pushdata(arg_f: [*c]vorb, arg_data: [*c]u8, arg_da
                                 if (tmp >= 0) break :blk data + @as(usize, @intCast(tmp)) else break :blk data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                             }).*))) << @intCast(24))));
                         }
-                        f.*.scan[@as(u32, @intCast(n))].bytes_done = i + j;
+                        f[0].scan[@as(usize, @intCast(n))].bytes_done = i + j;
                         if (f.*.page_crc_tests == @as(c_int, 4)) break;
                     }
                 }
@@ -5442,14 +5442,14 @@ pub fn vorbis_search_for_page_pushdata(arg_f: [*c]vorb, arg_data: [*c]u8, arg_da
             _ = &crc;
             var j: c_int = undefined;
             _ = &j;
-            var n_1: c_int = f.*.scan[@as(u32, @intCast(i))].bytes_done;
+            var n_1: c_int = f[0].scan[@as(usize, @intCast(i))].bytes_done;
             _ = &n_1;
-            var m: c_int = f.*.scan[@as(u32, @intCast(i))].bytes_left;
+            var m: c_int = f[0].scan[@as(usize, @intCast(i))].bytes_left;
             _ = &m;
             if (m > (data_len - n_1)) {
                 m = data_len - n_1;
             }
-            crc = f.*.scan[@as(u32, @intCast(i))].crc_so_far;
+            crc = f[0].scan[@as(usize, @intCast(i))].crc_so_far;
             {
                 j = 0;
                 while (j < m) : (j += 1) {
@@ -5459,20 +5459,20 @@ pub fn vorbis_search_for_page_pushdata(arg_f: [*c]vorb, arg_data: [*c]u8, arg_da
                     }).*);
                 }
             }
-            f.*.scan[@as(u32, @intCast(i))].bytes_left -= m;
-            f.*.scan[@as(u32, @intCast(i))].crc_so_far = crc;
-            if (f.*.scan[@as(u32, @intCast(i))].bytes_left == @as(c_int, 0)) {
-                if (f.*.scan[@as(u32, @intCast(i))].crc_so_far == f.*.scan[@as(u32, @intCast(i))].goal_crc) {
+            f[0].scan[@as(usize, @intCast(i))].bytes_left -= m;
+            f[0].scan[@as(usize, @intCast(i))].crc_so_far = crc;
+            if (f[0].scan[@as(usize, @intCast(i))].bytes_left == @as(c_int, 0)) {
+                if (f[0].scan[@as(usize, @intCast(i))].crc_so_far == f[0].scan[@as(usize, @intCast(i))].goal_crc) {
                     data_len = n_1 + m;
                     f.*.page_crc_tests = -@as(c_int, 1);
                     f.*.previous_length = 0;
                     f.*.next_seg = -@as(c_int, 1);
-                    f.*.current_loc = f.*.scan[@as(u32, @intCast(i))].sample_loc;
+                    f.*.current_loc = f[0].scan[@as(usize, @intCast(i))].sample_loc;
                     f.*.current_loc_valid = @intFromBool(f.*.current_loc != ~@as(u32, 0));
                     return data_len;
                 }
-                f.*.scan[@as(u32, @intCast(i))] = f.*.scan[
-                    @as(u32, @intCast(blk: {
+                f[0].scan[@as(usize, @intCast(i))] = f[0].scan[
+                    @as(usize, @intCast(blk: {
                         const ref = &f.*.page_crc_tests;
                         ref.* -= 1;
                         break :blk ref.*;
