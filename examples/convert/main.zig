@@ -1,25 +1,18 @@
 const std = @import("std");
 const zigaudio = @import("zigaudio");
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
-    var args_iter = try std.process.argsWithAllocator(allocator);
-    defer args_iter.deinit();
-
-    _ = args_iter.next(); // program name
-    const in_path = args_iter.next() orelse {
+    if (args.len < 3) {
         std.debug.print("usage: convert <input> <output>\n", .{});
         return error.InvalidUsage;
-    };
-    const out_path = args_iter.next() orelse {
-        std.debug.print("usage: convert <input> <output>\n", .{});
-        return error.InvalidUsage;
-    };
+    }
+    const in_path = args[1];
+    const out_path = args[2];
 
-    var audio = try zigaudio.decodeFile(allocator, in_path);
+    var audio = try zigaudio.decodeFile(allocator, init.io, in_path);
     defer audio.deinit(allocator);
 
     // Determine format from output file extension
@@ -30,5 +23,5 @@ pub fn main() !void {
     else
         return error.UnsupportedFormat;
 
-    try zigaudio.encodeToPath(format, out_path, &audio);
+    try zigaudio.encodeToPath(format, init.io, out_path, &audio);
 }

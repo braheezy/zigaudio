@@ -71,16 +71,16 @@ test "WAV encode to file" {
     defer audio.deinit(testing.allocator);
 
     const temp_path = "test_output.wav";
-    defer std.fs.cwd().deleteFile(temp_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, temp_path) catch {};
 
-    try api.encodeToPath(.wav, temp_path, &audio);
+    try api.encodeToPath(.wav, std.testing.io, temp_path, &audio);
 
     // Verify the file was created and has valid WAV structure
-    const file = try std.fs.cwd().openFile(temp_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(std.testing.io, temp_path, .{});
+    defer file.close(std.testing.io);
 
     var header: [44]u8 = undefined;
-    const bytes_read = try file.readAll(&header);
+    const bytes_read = try file.readPositionalAll(std.testing.io, &header, 0);
     try testing.expect(bytes_read >= 44);
     try testing.expectEqualSlices(u8, "RIFF", header[0..4]);
     try testing.expectEqualSlices(u8, "WAVE", header[8..12]);

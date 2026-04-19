@@ -1,14 +1,11 @@
 const std = @import("std");
 const zigaudio = @import("zigaudio");
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
     // Parse command line args
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     var show_metrics = false;
     var file_path: ?[]const u8 = null;
@@ -29,14 +26,14 @@ pub fn main() !void {
     }
 
     // Load entire file into memory first (minimize syscall impact on benchmark)
-    const file = try std.fs.cwd().openFile(file_path.?, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(init.io, file_path.?, .{});
+    defer file.close(init.io);
 
-    const file_size = (try file.stat()).size;
+    const file_size = (try file.stat(init.io)).size;
     const file_data = try allocator.alloc(u8, file_size);
     defer allocator.free(file_data);
 
-    const bytes_read = try file.readAll(file_data);
+    const bytes_read = try file.readPositionalAll(init.io, file_data, 0);
     if (bytes_read != file_size) return error.IncompleteRead;
 
     // Decode from memory (this is what we're benchmarking)
@@ -46,8 +43,7 @@ pub fn main() !void {
     // Optionally output metrics (disabled by default for clean benchmarking)
     if (show_metrics) {
         var stdout_buffer: [4096]u8 = undefined;
-        var stdout_file = std.fs.File.stdout();
-        var file_writer = stdout_file.writer(&stdout_buffer);
+        var file_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
         const writer = &file_writer.interface;
 
         const duration = audio.durationSeconds();

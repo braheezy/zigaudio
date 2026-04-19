@@ -145,20 +145,20 @@ fn info(br: *BitReader) !api.AudioInfo {
 }
 
 fn readAllBytes(br: *BitReader, allocator: std.mem.Allocator) ![]u8 {
-    if (br.file) |*file| {
+    if (br.file != null) {
         const total = br.totalSize() orelse return error.InvalidFormat;
         if (total == 0) return error.InvalidFormat;
 
-        const pos = try file.getPos();
-        defer file.seekTo(pos) catch {};
+        const pos = br.tell();
+        defer br.seekFileTo(pos) catch {};
 
-        try file.seekTo(0);
+        try br.seekFileTo(0);
         const buffer = try allocator.alloc(u8, total);
         errdefer allocator.free(buffer);
 
         var read_total: usize = 0;
         while (read_total < total) {
-            const amt = try file.read(buffer[read_total..]);
+            const amt = try br.readFile(buffer[read_total..]);
             if (amt == 0) break;
             read_total += amt;
         }

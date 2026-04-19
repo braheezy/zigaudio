@@ -60,13 +60,13 @@ fn openVorbis(bytes: []const u8, alloc_buffer: ?[]u8) !*c.stb_vorbis {
 }
 
 fn readAllBytes(br: *BitReader, allocator: std.mem.Allocator) ![]u8 {
-    if (br.file) |*file| {
+    if (br.file != null) {
         const total = br.totalSize() orelse return error.InvalidFormat;
-        try file.seekTo(0);
+        try br.seekFileTo(0);
         const buffer = try allocator.alloc(u8, total);
         var read_total: usize = 0;
         while (read_total < total) {
-            const amt = try file.read(buffer[read_total..]);
+            const amt = try br.readFile(buffer[read_total..]);
             if (amt == 0) break;
             read_total += amt;
         }

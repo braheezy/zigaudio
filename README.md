@@ -47,11 +47,11 @@ root_module.addImport("zigaudio", zigaudio.module("zigaudio"));
 const std = @import("std");
 const zigaudio = @import("zigaudio");
 
-pub fn main() !void {
-    const allocator = std.heap.page_allocator;
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
     // Simple: decode entire file (good for small files)
-    var audio = try zigaudio.decodeFile(allocator, "song.mp3");
+    var audio = try zigaudio.decodeFile(allocator, init.io, "song.mp3");
     defer audio.deinit(allocator);
 
     std.debug.print("Sample rate: {d} Hz\n", .{audio.params.sample_rate});
@@ -65,7 +65,7 @@ pub fn main() !void {
     }
 
     // For large files: stream and process incrementally
-    const stream = try zigaudio.fromPath(allocator, "large-song.mp3");
+    const stream = try zigaudio.fromPath(allocator, init.io, "large-song.mp3");
     defer stream.deinit(allocator);
 
     var buffer: [4096]i16 = undefined;
@@ -80,12 +80,12 @@ pub fn main() !void {
 ### Format Conversion
 
 ```zig
-var audio = try zigaudio.decodeFile(allocator, "input.mp3");
+var audio = try zigaudio.decodeFile(allocator, io, "input.mp3");
 defer audio.deinit(allocator);
 
 // Encode to QOA or WAV
-try zigaudio.encodeToPath(.qoa, "output.qoa", &audio);
-try zigaudio.encodeToPath(.wav, "output.wav", &audio);
+try zigaudio.encodeToPath(.qoa, io, "output.qoa", &audio);
+try zigaudio.encodeToPath(.wav, io, "output.wav", &audio);
 ```
 
 ### Embedded Audio

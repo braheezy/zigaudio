@@ -121,17 +121,17 @@ test "MP3 encode from WAV" {
 
     // Encode to MP3 file
     const temp_path = "test_output.mp3";
-    defer std.fs.cwd().deleteFile(temp_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, temp_path) catch {};
 
-    try api.encodeToPath(.mp3, temp_path, &audio);
+    try api.encodeToPath(.mp3, std.testing.io, temp_path, &audio);
 
     // Read back the MP3 file
-    const file = try std.fs.cwd().openFile(temp_path, .{});
-    defer file.close();
-    const stat = try file.stat();
+    const file = try std.Io.Dir.cwd().openFile(std.testing.io, temp_path, .{});
+    defer file.close(std.testing.io);
+    const stat = try file.stat(std.testing.io);
     const encoded_data = try allocator.alloc(u8, stat.size);
     defer allocator.free(encoded_data);
-    _ = try file.readAll(encoded_data);
+    _ = try file.readPositionalAll(std.testing.io, encoded_data, 0);
 
     // Verify the MP3 file is valid (starts with frame sync)
     try testing.expect(encoded_data.len > 0);

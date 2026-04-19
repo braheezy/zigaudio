@@ -179,7 +179,7 @@ pub fn fx_flac_get_streaminfo(inst_arg: *fx_flac_t, key: fx_flac_streaminfo_key_
             @as(c_uint, @bitCast(@as(c_int, 5))) => return @as(i64, @bitCast(@as(c_ulonglong, inst.*.streaminfo.*.n_channels))),
             @as(c_uint, @bitCast(@as(c_int, 6))) => return @as(i64, @bitCast(@as(c_ulonglong, inst.*.streaminfo.*.sample_size))),
             @as(c_uint, @bitCast(@as(c_int, 7))) => return @as(i64, @bitCast(inst.*.streaminfo.*.n_samples)),
-            @as(c_uint, @bitCast(@as(c_int, 128))), @as(c_uint, @bitCast(@as(c_int, 129))), @as(c_uint, @bitCast(@as(c_int, 130))), @as(c_uint, @bitCast(@as(c_int, 131))), @as(c_uint, @bitCast(@as(c_int, 132))), @as(c_uint, @bitCast(@as(c_int, 133))), @as(c_uint, @bitCast(@as(c_int, 134))), @as(c_uint, @bitCast(@as(c_int, 135))), @as(c_uint, @bitCast(@as(c_int, 136))), @as(c_uint, @bitCast(@as(c_int, 137))), @as(c_uint, @bitCast(@as(c_int, 138))), @as(c_uint, @bitCast(@as(c_int, 139))), @as(c_uint, @bitCast(@as(c_int, 140))), @as(c_uint, @bitCast(@as(c_int, 141))), @as(c_uint, @bitCast(@as(c_int, 142))), @as(c_uint, @bitCast(@as(c_int, 143))) => return @as(i64, @bitCast(@as(c_ulonglong, inst.*.streaminfo.*.md5_sum[key -% @as(c_uint, @bitCast(FLAC_KEY_MD5_SUM_0))]))),
+            @as(c_uint, @bitCast(@as(c_int, 128))), @as(c_uint, @bitCast(@as(c_int, 129))), @as(c_uint, @bitCast(@as(c_int, 130))), @as(c_uint, @bitCast(@as(c_int, 131))), @as(c_uint, @bitCast(@as(c_int, 132))), @as(c_uint, @bitCast(@as(c_int, 133))), @as(c_uint, @bitCast(@as(c_int, 134))), @as(c_uint, @bitCast(@as(c_int, 135))), @as(c_uint, @bitCast(@as(c_int, 136))), @as(c_uint, @bitCast(@as(c_int, 137))), @as(c_uint, @bitCast(@as(c_int, 138))), @as(c_uint, @bitCast(@as(c_int, 139))), @as(c_uint, @bitCast(@as(c_int, 140))), @as(c_uint, @bitCast(@as(c_int, 141))), @as(c_uint, @bitCast(@as(c_int, 142))), @as(c_uint, @bitCast(@as(c_int, 143))) => return @intCast(inst.*.streaminfo[0].md5_sum[@as(usize, @intCast(key -% @as(c_uint, @bitCast(FLAC_KEY_MD5_SUM_0))))]),
             else => return @as(i64, @bitCast(@as(c_ulonglong, 9223372036854775807))),
         }
         break;
@@ -1619,7 +1619,7 @@ pub fn _fx_flac_process_in_metadata(inst: *fx_flac_t) bool {
                         break;
                     },
                     @as(c_uint, 1), @as(c_uint, 2), @as(c_uint, 3), @as(c_uint, 4), @as(c_uint, 5), @as(c_uint, 6), @as(c_uint, 7), @as(c_uint, 8), @as(c_uint, 9), @as(c_uint, 10), @as(c_uint, 11), @as(c_uint, 12), @as(c_uint, 13), @as(c_uint, 14), @as(c_uint, 15), @as(c_uint, 16) => {
-                        inst.*.streaminfo.*.md5_sum[@as(c_uint, 16) -% inst.*.n_bytes_rem] = @as(u8, @bitCast(@as(i8, @truncate(blk: {
+                        inst.*.streaminfo[0].md5_sum[@as(usize, @intCast(@as(c_uint, 16) -% inst.*.n_bytes_rem))] = @as(u8, @bitCast(@as(i8, @truncate(blk: {
                             const tmp = fx_bitstream_try_read_msb(&inst.*.bitstream, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 8))))));
                             tmp_ = tmp;
                             break :blk tmp;
