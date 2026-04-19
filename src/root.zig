@@ -205,11 +205,11 @@ pub const DecoderReader = struct {
 /// Create a streaming decoder from a file path with automatic format detection.
 /// The decoder can read PCM samples incrementally without loading the entire file.
 /// Returns a decoder that must be cleaned up with decoder.deinit(allocator).
-pub fn fromPath(allocator: std.mem.Allocator, path: []const u8) !*Decoder {
+pub fn fromPath(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !*Decoder {
     const br = try allocator.create(BitReader);
     errdefer allocator.destroy(br);
 
-    br.* = try BitReader.initFromFile(allocator, path);
+    br.* = try BitReader.initFromFile(allocator, io, path);
     errdefer br.deinit();
 
     return try format.openDecoder(allocator, br);
@@ -233,8 +233,8 @@ pub const openFile = fromPath;
 pub const openMemory = fromMemory;
 
 /// Probe file format without opening decoder
-pub fn probeFile(allocator: std.mem.Allocator, path: []const u8) !Id {
-    var br = try BitReader.initFromFile(allocator, path);
+pub fn probeFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !Id {
+    var br = try BitReader.initFromFile(allocator, io, path);
     defer br.deinit();
     return (try format.probe(&br)) orelse error.Unsupported;
 }
@@ -246,8 +246,8 @@ pub fn probeMemory(allocator: std.mem.Allocator, data: []const u8) !Id {
 }
 
 /// Get audio info from file without full decode
-pub fn infoFile(allocator: std.mem.Allocator, path: []const u8) !AudioInfo {
-    var br = try BitReader.initFromFile(allocator, path);
+pub fn infoFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !AudioInfo {
+    var br = try BitReader.initFromFile(allocator, io, path);
     defer br.deinit();
     return format.getInfo(&br);
 }
@@ -261,8 +261,8 @@ pub fn infoMemory(allocator: std.mem.Allocator, data: []const u8) !AudioInfo {
 /// Decode entire file into memory as f32 PCM.
 /// Convenience function that opens a decoder and reads all audio data.
 /// For streaming or partial decoding, use fromPath() and decoder methods instead.
-pub fn decodeFile(allocator: std.mem.Allocator, path: []const u8) !Audio {
-    const decoder = try fromPath(allocator, path);
+pub fn decodeFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !Audio {
+    const decoder = try fromPath(allocator, io, path);
     defer decoder.deinit(allocator);
     return try decoder.toAudio(allocator);
 }
@@ -277,12 +277,12 @@ pub fn decodeMemory(allocator: std.mem.Allocator, data: []const u8) !Audio {
 }
 
 /// Encode managed audio to a file on disk using the requested format.
-pub fn encodeToPath(id: Id, path: []const u8, audio: *const Audio) WriteError!void {
-    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
+pub fn encodeToPath(id: Id, io: std.Io, path: []const u8, audio: *const Audio) WriteError!void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{ .truncate = true });
+    defer file.close(io);
 
     var buffer: [4096]u8 = undefined;
-    var file_writer = file.writer(&buffer);
+    var file_writer = file.writer(io, &buffer);
 
     try format.encode(id, &file_writer.interface, audio);
     try file_writer.interface.flush();

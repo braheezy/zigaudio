@@ -494,11 +494,11 @@ fn writeU64BE(writer: *std.Io.Writer, v: u64) api.WriteError!void {
     try writeAllConst(writer, &buf);
 }
 
-fn fileWriteAllConst(file: std.fs.File, src: []const u8) api.WriteError!void {
-    file.writeAll(src) catch return error.WriteFailed;
+fn fileWriteAllConst(file: std.Io.File, io: std.Io, src: []const u8) api.WriteError!void {
+    file.writePositionalAll(io, src, 0) catch return error.WriteFailed;
 }
 
-fn fileWriteU64BE(file: std.fs.File, v: u64) api.WriteError!void {
+fn fileWriteU64BE(file: std.Io.File, io: std.Io, v: u64) api.WriteError!void {
     var buf: [8]u8 = undefined;
     buf[0] = @truncate(v >> 56);
     buf[1] = @truncate(v >> 48);
@@ -508,10 +508,15 @@ fn fileWriteU64BE(file: std.fs.File, v: u64) api.WriteError!void {
     buf[5] = @truncate(v >> 16);
     buf[6] = @truncate(v >> 8);
     buf[7] = @truncate(v >> 0);
-    try fileWriteAllConst(file, &buf);
+    try fileWriteAllConst(file, io, &buf);
 }
 
-pub fn encodeToFile(file: std.fs.File, audio: *const api.Audio) api.WriteError!void {
+pub fn encodeToFile(file: std.Io.File, io: std.Io, audio: *const api.Audio) api.WriteError!void {
+    var buffer: [4096]u8 = undefined;
+    var file_writer = file.writer(io, &buffer);
+    const writer = &file_writer.interface;
+    defer writer.flush() catch {};
+
     if (audio.params.sample_type != .f32) return error.UnsupportedBitDepth;
     if (audio.params.channels == 0 or audio.params.channels > max_channels) return error.UnsupportedChannelCount;
     if (audio.params.sample_rate == 0 or audio.params.sample_rate > 0x00FF_FFFF) return error.UnsupportedSampleRate;
@@ -529,7 +534,7 @@ pub fn encodeToFile(file: std.fs.File, audio: *const api.Audio) api.WriteError!v
         lms[c].weights[3] = (@as(i16, 1) << 14);
     }
     const file_header: u64 = (@as(u64, magic) << 32) | @as(u64, @intCast(total_frames));
-    try fileWriteU64BE(file, file_header);
+    try writeU64BE(writer, file_header);
 
     var frame_start: usize = 0;
     while (frame_start < total_frames) : (frame_start += frame_len) {
@@ -544,7 +549,7 @@ pub fn encodeToFile(file: std.fs.File, audio: *const api.Audio) api.WriteError!v
         fh |= (@as(u64, audio.params.sample_rate) & 0x00ff_ffff) << 32;
         fh |= (@as(u64, @intCast(this_frame_len)) & 0x0000_ffff) << 16;
         fh |= (@as(u64, @intCast(frame_size)) & 0x0000_ffff);
-        try fileWriteU64BE(file, fh);
+        try writeU64BE(writer, fh);
 
         for (0..channels) |c| {
             var history_be: u64 = 0;
@@ -555,8 +560,8 @@ pub fn encodeToFile(file: std.fs.File, audio: *const api.Audio) api.WriteError!v
                 history_be = (history_be << 16) | (@as(u64, h) & 0xffff);
                 weights_be = (weights_be << 16) | (@as(u64, w) & 0xffff);
             }
-            try fileWriteU64BE(file, history_be);
-            try fileWriteU64BE(file, weights_be);
+            try writeU64BE(writer, history_be);
+            try writeU64BE(writer, weights_be);
         }
 
         var sample_index: usize = 0;
@@ -622,7 +627,7 @@ pub fn encodeToFile(file: std.fs.File, audio: *const api.Audio) api.WriteError!v
                     const shift: u6 = @as(u6, @intCast(@as(u32, @intCast(pad_samples_i32 * 3))));
                     best_slice <<= shift;
                 }
-                try fileWriteU64BE(file, best_slice);
+                try writeU64BE(writer, best_slice);
             }
         }
     }

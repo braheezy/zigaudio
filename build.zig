@@ -40,7 +40,7 @@ fn buildExamples(
 ) void {
     // Player example
     {
-        const zoto_dep = b.dependency("zoto", .{ .target = target, .optimize = optimize });
+        const zoto_dep = b.lazyDependency("zoto", .{ .target = target, .optimize = optimize }) orelse return;
         const zoto_mod = zoto_dep.module("zoto");
 
         const player_mod = b.createModule(.{

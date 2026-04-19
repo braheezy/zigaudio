@@ -4056,7 +4056,7 @@ pub export fn vorbis_decode_packet_rest(arg_f: [*c]vorb, arg_len: [*c]c_int, arg
 
         const floor_conf = &f.*.floor_config[@as(usize, floor_index)].floor1;
         if (get_bits(f, 1) != 0) {
-            var finalY = f.*.finalY[@as(usize, @intCast(ch_index))];
+            var finalY: [*c]int16 = f[0].finalY[@as(usize, @intCast(ch_index))];
             var step2_flag = [_]u8{0} ** 256;
             const range_list = [_]c_int{ 256, 128, 86, 64 };
             const range = range_list[@as(usize, floor_conf.*.floor1_multiplier - 1)];
@@ -4109,8 +4109,14 @@ pub export fn vorbis_decode_packet_rest(arg_f: [*c]vorb, arg_len: [*c]c_int, arg
                 const low = floor_conf.*.neighbors[@as(usize, @intCast(j))][0];
                 const high = floor_conf.*.neighbors[@as(usize, @intCast(j))][1];
                 const x = floor_conf.*.Xlist[@as(usize, @intCast(j))];
-                const pred = predict_point(@as(c_int, x), @as(c_int, floor_conf.*.Xlist[@as(usize, low)]), @as(c_int, floor_conf.*.Xlist[@as(usize, high)]), finalY[0][@as(usize, low)], finalY[0][@as(usize, high)]);
-                var val = @as(c_int, finalY[0][@as(usize, @intCast(j))]);
+                const pred = predict_point(
+                    @as(c_int, x),
+                    @as(c_int, floor_conf.*.Xlist[@as(usize, low)]),
+                    @as(c_int, floor_conf.*.Xlist[@as(usize, high)]),
+                    finalY[@as(usize, low)],
+                    finalY[@as(usize, high)],
+                );
+                var val = @as(c_int, finalY[@as(usize, @intCast(j))]);
                 const highroom = range - pred;
                 const lowroom = pred;
                 const room = if (highroom < lowroom) highroom * 2 else lowroom * 2;
@@ -4140,7 +4146,7 @@ pub export fn vorbis_decode_packet_rest(arg_f: [*c]vorb, arg_len: [*c]c_int, arg
             var idx: c_int = 0;
             while (idx < floor_conf.*.values) : (idx += 1) {
                 if (step2_flag[@as(usize, @intCast(idx))] == 0) {
-                    finalY[0][@as(usize, @intCast(idx))] = -1;
+                    finalY[@as(usize, @intCast(idx))] = -1;
                 }
             }
         } else {

@@ -3,29 +3,13 @@ const builtin = @import("builtin");
 const zigaudio = @import("zigaudio");
 const zoto = @import("zoto");
 
-var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
-
-pub fn main() !void {
-    const allocator, const is_debug = gpa: {
-        if (builtin.os.tag == .wasi) break :gpa .{ std.heap.wasm_allocator, false };
-        break :gpa switch (builtin.mode) {
-            .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
-            .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false },
-        };
-    };
-    defer if (is_debug) {
-        _ = debug_allocator.deinit();
-    };
-
-    var args = try std.process.argsWithAllocator(allocator);
-    defer args.deinit();
-
-    // pop program name
-    _ = args.next();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     var full_decode_first: bool = false;
     var audio_path: ?[]const u8 = null;
-    while (args.next()) |arg| {
+    for (args[1..]) |arg| {
         if (std.mem.eql(u8, arg, "--full")) {
             full_decode_first = true;
         } else if (audio_path == null) {
@@ -38,14 +22,14 @@ pub fn main() !void {
         return;
     }
 
-    var stdin_file = std.fs.File.stdin();
+    var stdin_file = std.Io.File.stdin();
     var stdin_buf: [1]u8 = .{0};
 
     if (full_decode_first) {
         const path = audio_path.?;
         std.debug.print("Performing full decode\n", .{});
 
-        var pcm = zigaudio.decodeFile(allocator, path) catch |e| switch (e) {
+        var pcm = zigaudio.decodeFile(allocator, init.io, path) catch |e| switch (e) {
             error.Unsupported => {
                 std.debug.print("unsupported format: {s}\n", .{path});
                 return;
@@ -93,7 +77,7 @@ pub fn main() !void {
         std.debug.print("Starting playback...\n", .{});
         try player.play();
         while (player.isPlaying()) {
-            std.Thread.sleep(std.time.ns_per_ms * 25);
+            sleepMs(25);
         }
         std.debug.print("Playback finished.\n", .{});
         return;
@@ -103,7 +87,7 @@ pub fn main() !void {
 
     std.debug.print("Opening {s}\n", .{path});
 
-    const stream = try zigaudio.fromPath(allocator, path);
+    const stream = try zigaudio.fromPath(allocator, init.io, path);
     defer stream.deinit(allocator);
 
     const info = stream.info;
@@ -147,7 +131,7 @@ pub fn main() !void {
     var quit_requested = false;
 
     while (player.isPlaying() and !quit_requested) {
-        std.Thread.sleep(std.time.ns_per_ms * 25);
+        sleepMs(25);
         switch (builtin.os.tag) {
             .windows, .wasi => {},
             else => {
@@ -156,8 +140,9 @@ pub fn main() !void {
                 };
                 const poll_res = std.posix.poll(&fds, 0) catch 0;
                 if (poll_res > 0 and (fds[0].revents & std.posix.POLL.IN) != 0) {
-                    const read_bytes = stdin_file.read(&stdin_buf) catch |err| switch (err) {
+                    const read_bytes = stdin_file.readStreaming(init.io, &.{&stdin_buf}) catch |err| switch (err) {
                         error.InputOutput => 0,
+                        error.EndOfStream => 0,
                         else => return err,
                     };
                     if (read_bytes > 0 and (stdin_buf[0] == 'q' or stdin_buf[0] == 'Q')) {
@@ -174,4 +159,12 @@ pub fn main() !void {
     } else {
         std.debug.print("Playback finished.\n", .{});
     }
+}
+
+fn sleepMs(ms: u64) void {
+    const ts = std.posix.system.timespec{
+        .sec = @intCast(ms / 1000),
+        .nsec = @intCast((ms % 1000) * std.time.ns_per_ms),
+    };
+    _ = std.posix.system.nanosleep(&ts, null);
 }

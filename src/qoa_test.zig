@@ -86,12 +86,12 @@ test "QOA encode from WAV decodes equal to golden" {
     defer audio.deinit(testing.allocator);
 
     const out_path = "test_out.qoa";
-    defer std.fs.cwd().deleteFile(out_path) catch {};
-    const file = try std.fs.cwd().createFile(out_path, .{});
-    defer file.close();
-    try qoa.encodeToFile(file, &audio);
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, out_path) catch {};
+    const file = try std.Io.Dir.cwd().createFile(std.testing.io, out_path, .{});
+    defer file.close(std.testing.io);
+    try qoa.encodeToFile(file, std.testing.io, &audio);
 
-    const actual_bytes = try std.fs.cwd().readFileAlloc(testing.allocator, out_path, std.math.maxInt(usize));
+    const actual_bytes = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, out_path, testing.allocator, .unlimited);
     defer testing.allocator.free(actual_bytes);
 
     const dec_golden = try decodeAll(testing.allocator, golden_qoa);
