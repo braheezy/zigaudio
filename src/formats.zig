@@ -1,16 +1,26 @@
 const std = @import("std");
 const api = @import("root.zig");
 const BitReader = @import("BitReader.zig");
+const build_options = @import("build_options");
 
 // Simplified format registry - only WAV for now during migration
-pub const supported_formats: []const VTable = &[_]VTable{
-    @import("wav.zig").vtable,
-    @import("flac.zig").vtable,
-    @import("aac.zig").vtable,
-    @import("mp3.zig").vtable,
-    @import("qoa.zig").vtable,
-    @import("vorbis.zig").vtable,
-};
+pub const supported_formats: []const VTable = if (build_options.enable_aac)
+    &[_]VTable{
+        @import("wav.zig").vtable,
+        @import("flac.zig").vtable,
+        @import("aac.zig").vtable,
+        @import("mp3.zig").vtable,
+        @import("qoa.zig").vtable,
+        @import("vorbis.zig").vtable,
+    }
+else
+    &[_]VTable{
+        @import("wav.zig").vtable,
+        @import("flac.zig").vtable,
+        @import("mp3.zig").vtable,
+        @import("qoa.zig").vtable,
+        @import("vorbis.zig").vtable,
+    };
 
 pub const Id = enum {
     unknown,

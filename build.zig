@@ -3,13 +3,14 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const enable_aac = b.option(
+        bool,
+        "aac",
+        "Enable AAC decoding via FAAD2 (requires libc)",
+    ) orelse (target.result.os.tag != .freestanding);
 
-    // Create AAC decoder static library
-    const faad2_dep = b.dependency(
-        "faad2",
-        .{ .target = target, .optimize = optimize },
-    );
-    const aac_lib = faad2_dep.artifact("faad2");
+    const options = b.addOptions();
+    options.addOption(bool, "enable_aac", enable_aac);
 
     // Create zigaudio library module
     const lib_mod = b.addModule("zigaudio", .{
@@ -17,7 +18,15 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    lib_mod.linkLibrary(aac_lib);
+    lib_mod.addOptions("build_options", options);
+
+    // Create AAC decoder static library
+    if (enable_aac) {
+        if (b.lazyDependency("faad2", .{ .target = target, .optimize = optimize })) |faad2_dep| {
+            const aac_lib = faad2_dep.artifact("faad2");
+            lib_mod.linkLibrary(aac_lib);
+        }
+    }
 
     // Test target
     const test_exe = b.addTest(.{
