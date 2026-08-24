@@ -12,6 +12,7 @@
         .faad2 = .{
             .url = "git+https://github.com/braheezy/faad2.git#f92d2b5130fff38ecc3ea1e906f6dae0aef36a3d",
             .hash = "faad2-0.0.0-9Fe97v0MAACYS_np_uygTNKUwvS1Gcv55v8Utt85QSX9",
+            .lazy = true,
         },
     },
     .paths = .{

@@ -4,14 +4,14 @@ A Zig library for reading and writing audio files with a streaming-capable, form
 
 ## Audio Format Support
 
-| Format | Read | Write | Notes |
-|--------|------|-------|-------|
-| QOA    | ✅   | ✅    | Full support |
-| WAV    | ✅   | ✅    | Write: i16 PCM only |
-| MP3    | ✅   | ❌    | |
+| Format | Read | Write | Notes                  |
+| ------ | ---- | ----- | ---------------------- |
+| QOA    | ✅   | ✅    | Full support           |
+| WAV    | ✅   | ✅    | Write: i16 PCM only    |
+| MP3    | ✅   | ❌    |                        |
 | AAC    | ✅   | ❌    | Not pure Zig (`faad2`) |
-| FLAC   | ✅   | ❌    | |
-| OGG    | ✅   | ❌    | Vorbis streams |
+| FLAC   | ✅   | ❌    |                        |
+| OGG    | ✅   | ❌    | Vorbis streams         |
 
 **Note:** All formats decode to i16 PCM. WAV encoding supports i16 PCM output only.
 
@@ -37,7 +37,14 @@ zig fetch --save git+https://github.com/braheezy/zig-audio#0.1.0
 And in your `build.zig`:
 
 ```zig
-const zigaudio = b.dependency("zigaudio", .{});
+const target = b.standardTargetOptions(.{});
+const optimize = b.standardOptimizeOption(.{});
+const zigaudio = b.dependency("zigaudio", .{
+    // default build options
+    .optimize = optimize,
+    .target = target,
+    .aac = true,
+});
 root_module.addImport("zigaudio", zigaudio.module("zigaudio"));
 ```
 

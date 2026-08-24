@@ -2,6 +2,7 @@
 const std = @import("std");
 const BitReader = @import("BitReader.zig");
 const format = @import("formats.zig");
+const build_options = @import("build_options");
 
 pub const Id = format.Id;
 pub const Decoder = format.Decoder;
@@ -292,7 +293,7 @@ test {
     @import("std").testing.refAllDecls(@This());
     _ = @import("qoa_test.zig");
     _ = @import("wav_test.zig");
-    _ = @import("aac_test.zig");
+    if (build_options.enable_aac) _ = @import("aac_test.zig");
     _ = @import("flac_test.zig");
     _ = @import("mp3/tests.zig");
     _ = @import("vorbis_test.zig");
