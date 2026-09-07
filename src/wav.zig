@@ -603,6 +603,44 @@ fn decodeMsAdpcm(ctx: *WavDecoder, dst: []f32) !usize {
     return samples_written;
 }
 
+/// Seek in uncompressed PCM/IEEE-float WAV data without decoding preceding frames.
+/// Positions count PCM frames, not individual channel samples. The exact end is
+/// valid; invalid positions and unsupported encodings leave decoder state intact.
+fn decoderSeek(decoder: *format.Decoder, frame: usize) !void {
+    const ctx: *WavDecoder = @ptrCast(@alignCast(decoder.context));
+    const metadata = ctx.metadata;
+    switch (metadata.audio_format) {
+        FORMAT_PCM => switch (metadata.bits_per_sample) {
+            8, 16, 24, 32 => {},
+            else => return error.Unseekable,
+        },
+        FORMAT_IEEE_FLOAT => switch (metadata.bits_per_sample) {
+            32, 64 => {},
+            else => return error.Unseekable,
+        },
+        else => return error.Unseekable,
+    }
+    // Incrementally appended sources need a separate availability contract.
+    if (ctx.br.append_list != null) return error.Unseekable;
+    const bytes_per_frame = @as(usize, metadata.channels) * (metadata.bits_per_sample / 8);
+    if (metadata.block_align != bytes_per_frame or metadata.data_size % bytes_per_frame != 0)
+        return error.InvalidFormat;
+    if (frame > ctx.total_samples / metadata.channels) return error.InvalidSeekPosition;
+    const relative = std.math.mul(usize, frame, bytes_per_frame) catch return error.InvalidSeekPosition;
+    const offset = std.math.add(usize, metadata.data_offset, relative) catch return error.InvalidSeekPosition;
+    if (ctx.br.totalSize()) |size| {
+        if (offset > size) return error.InvalidSeekPosition;
+    }
+
+    if (ctx.br.file != null) {
+        // Propagate OS seek errors; BitReader.seekTo would silently swallow them.
+        try ctx.br.seekFileTo(offset);
+    } else {
+        ctx.br.seekTo(offset);
+    }
+    ctx.samples_read = frame * @as(usize, metadata.channels);
+}
+
 fn decoderDeinit(decoder: *format.Decoder, allocator: std.mem.Allocator) void {
     const ctx: *WavDecoder = @ptrCast(@alignCast(decoder.context));
     ctx.br.deinit();
@@ -614,6 +652,7 @@ fn decoderDeinit(decoder: *format.Decoder, allocator: std.mem.Allocator) void {
 pub const decoder_vtable = format.DecoderVTable{
     .read = decoderRead,
     .deinit = decoderDeinit,
+    .seek = decoderSeek,
 };
 
 fn encode(writer: *std.Io.Writer, audio: *const api.Audio) api.WriteError!void {
