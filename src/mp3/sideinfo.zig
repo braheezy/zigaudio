@@ -155,7 +155,7 @@ test "sideinfo read basic structure" {
 
     // Create minimal sideinfo data for testing
     // For MPEG-1 stereo, sideinfo is 32 bytes
-    const test_data = [_]u8{0} ** 32;
+    const test_data = @as([32]u8, @splat(0));
     var reader = std.Io.Reader.fixed(&test_data);
 
     const si = try readAll(allocator, &reader, header);
@@ -178,7 +178,7 @@ pub const EncoderGranuleInfo = struct {
     count1: u64 = 0,
     global_gain: u64 = 0,
     scale_factor_compress: u64 = 0,
-    table_select: [3]u64 = .{0} ** 3,
+    table_select: [3]u64 = @splat(0),
     region0_count: u64 = 0,
     region1_count: u64 = 0,
     preflag: u64 = 0,
@@ -190,7 +190,7 @@ pub const EncoderGranuleInfo = struct {
     address2: u64 = 0,
     address3: u64 = 0,
     quantizer_step_size: i64 = 0,
-    scale_factor_len: [4]u64 = .{0} ** 4,
+    scale_factor_len: [4]u64 = @splat(0),
 };
 
 pub const GranuleChannel = struct {
@@ -204,7 +204,7 @@ pub const Granule = struct {
 pub const EncoderSideInfo = struct {
     private_bits: u64 = 0,
     reservoir_drain: i64 = 0,
-    scale_factor_select_info: [2][4]u64 = .{.{0} ** 4} ** 2,
+    scale_factor_select_info: [2][4]u64 = @splat(@splat(0)),
     granules: [2]Granule = .{
         .{ .channels = .{ .{ .tt = .{} }, .{ .tt = .{} } } },
         .{ .channels = .{ .{ .tt = .{} }, .{ .tt = .{} } } },

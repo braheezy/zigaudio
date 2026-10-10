@@ -70,9 +70,7 @@ fn buildExamples(
         player_step.dependOn(&install_player.step);
 
         const run_cmd = b.addRunArtifact(player_exe);
-        if (b.args) |args| {
-            run_cmd.addArgs(args);
-        }
+        run_cmd.addPassthruArgs();
         const run_step = b.step("run", "Run the player example");
         run_step.dependOn(&run_cmd.step);
     }
@@ -96,7 +94,7 @@ fn buildExamples(
         bench_step.dependOn(&install_bench.step);
 
         const bench_run = b.addRunArtifact(bench_exe);
-        if (b.args) |args| bench_run.addArgs(args);
+        bench_run.addPassthruArgs();
         const bench_run_step = b.step("run-bench", "Run the bench example");
         bench_run_step.dependOn(&bench_run.step);
     }

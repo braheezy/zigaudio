@@ -253,7 +253,7 @@ fn antialias(self: *Frame, gr: usize, ch: usize) void {
 }
 
 fn imdctWin(in: []const f32, block_type: usize) [36]f32 {
-    var out: [36]f32 = .{0} ** 36;
+    var out: [36]f32 = @splat(0);
     if (block_type == 2) {
         const iwd = imdct.win_data[block_type];
         const N: usize = 12;

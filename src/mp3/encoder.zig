@@ -150,7 +150,7 @@ pub const Encoder = struct {
             .side_info = sideinfo.EncoderSideInfo{},
             .ratio = std.mem.zeroes(psycho.PsyRatio),
             .scale_factor = std.mem.zeroes(psycho.ScaleFactor),
-            .perceptual_energy = .{.{0.0} ** MAX_GRANULES} ** MAX_CHANNELS,
+            .perceptual_energy = @splat(@splat(0.0)),
             .l3_encoding = std.mem.zeroes([MAX_CHANNELS][MAX_GRANULES][GRANULE_SIZE]i64),
             .l3_subband_samples = std.mem.zeroes([MAX_CHANNELS][MAX_GRANULES + 1][18][SUBBAND_LIMIT]i32),
             .mdct_frequency = std.mem.zeroes([MAX_CHANNELS][MAX_GRANULES][GRANULE_SIZE]i32),
@@ -158,7 +158,7 @@ pub const Encoder = struct {
             .l3loop_state = l3loop_state,
             .mdct = mdct,
             .subband = subband,
-            .buffer = .{0} ** MAX_CHANNELS,
+            .buffer = @splat(0),
             .buffer_data = undefined,
         };
     }

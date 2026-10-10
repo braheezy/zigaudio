@@ -1,12 +1,12 @@
 .{
     .name = .zigaudio,
-    .version = "0.1.0",
+    .version = "0.2.0",
     .fingerprint = 0x8d32a56db86b3384, // Changing this has security and trust implications.
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{
         .zoto = .{
-            .url = "git+https://github.com/braheezy/zoto#44e8e51b778f94059fe4196865943e3924c70d75",
-            .hash = "zoto-0.1.0-Eh0DjAK0AQDdTAEp-ViiRZbasKqrv6kQq04eB-cUSyEF",
+            .url = "git+https://github.com/braheezy/zoto#84f43bed1a657f48433152a7c1da0408d5533d56",
+            .hash = "zoto-0.1.0-Eh0DjJruAQCYJar_IoE_BEtVP-qxC8vFEb20HDAQcZM8",
             .lazy = true,
         },
         .faad2 = .{

@@ -1027,7 +1027,7 @@ pub fn compute_codewords(c: [*c]Codebook, len: [*c]u8, n: c_int, values: [*c]u32
     var i: c_int = undefined;
     var k: c_int = undefined;
     var m: c_int = 0;
-    var available: [32]u32 = [_]u32{0} ** 32;
+    var available: [32]u32 = @as([32]u32, @splat(0));
     {
         k = 0;
         while (k < n) : (k += 1) if (@as(c_int, @bitCast(@as(u32, (blk: {
@@ -4038,8 +4038,8 @@ pub export fn vorbis_decode_packet_rest(arg_f: [*c]vorb, arg_len: [*c]c_int, arg
     const n2 = n >> @intCast(1);
     const map = f.*.mapping + @as(usize, m.*.mapping);
 
-    var zero_channel = [_]c_int{0} ** 256;
-    var really_zero_channel = [_]c_int{0} ** 256;
+    var zero_channel = @as([256]c_int, @splat(0));
+    var really_zero_channel = @as([256]c_int, @splat(0));
 
     CHECK(f);
 
@@ -4057,7 +4057,7 @@ pub export fn vorbis_decode_packet_rest(arg_f: [*c]vorb, arg_len: [*c]c_int, arg
         const floor_conf = &f.*.floor_config[@as(usize, floor_index)].floor1;
         if (get_bits(f, 1) != 0) {
             var finalY: [*c]int16 = f[0].finalY[@as(usize, @intCast(ch_index))];
-            var step2_flag = [_]u8{0} ** 256;
+            var step2_flag = @as([256]u8, @splat(0));
             const range_list = [_]c_int{ 256, 128, 86, 64 };
             const range = range_list[@as(usize, floor_conf.*.floor1_multiplier - 1)];
             var offset: c_int = 2;
@@ -4175,7 +4175,7 @@ pub export fn vorbis_decode_packet_rest(arg_f: [*c]vorb, arg_len: [*c]c_int, arg
     CHECK(f);
 
     var residue_buffers: [STB_VORBIS_MAX_CHANNELS][*]f32 = undefined;
-    var do_not_decode = [_]u8{0} ** 256;
+    var do_not_decode = @as([256]u8, @splat(0));
 
     var submap: c_int = 0;
     while (submap < map.*.submaps) : (submap += 1) {
@@ -5669,32 +5669,32 @@ pub fn peek_decode_initial(arg_f: [*c]vorb, arg_p_left_start: [*c]c_int, arg_p_l
 pub var channel_position: [7][6]int8 = [7][6]int8{
     [1]int8{
         0,
-    } ++ [1]int8{std.mem.zeroes(int8)} ** 5,
+    } ++ @as([5]int8, @splat(std.mem.zeroes(int8))),
     [1]int8{
         @as(int8, @bitCast(@as(i8, @truncate((@as(c_int, 2) | @as(c_int, 4)) | @as(c_int, 1))))),
-    } ++ [1]int8{std.mem.zeroes(int8)} ** 5,
+    } ++ @as([5]int8, @splat(std.mem.zeroes(int8))),
     [2]int8{
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 2) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 4) | @as(c_int, 1))))),
-    } ++ [1]int8{std.mem.zeroes(int8)} ** 4,
+    } ++ @as([4]int8, @splat(std.mem.zeroes(int8))),
     [3]int8{
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 2) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate((@as(c_int, 2) | @as(c_int, 4)) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 4) | @as(c_int, 1))))),
-    } ++ [1]int8{std.mem.zeroes(int8)} ** 3,
+    } ++ @as([3]int8, @splat(std.mem.zeroes(int8))),
     [4]int8{
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 2) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 4) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 2) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 4) | @as(c_int, 1))))),
-    } ++ [1]int8{std.mem.zeroes(int8)} ** 2,
+    } ++ @as([2]int8, @splat(std.mem.zeroes(int8))),
     [5]int8{
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 2) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate((@as(c_int, 2) | @as(c_int, 4)) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 4) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 2) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 4) | @as(c_int, 1))))),
-    } ++ [1]int8{std.mem.zeroes(int8)} ** 1,
+    } ++ @as([1]int8, @splat(std.mem.zeroes(int8))),
     [6]int8{
         @as(int8, @bitCast(@as(i8, @truncate(@as(c_int, 2) | @as(c_int, 1))))),
         @as(int8, @bitCast(@as(i8, @truncate((@as(c_int, 2) | @as(c_int, 4)) | @as(c_int, 1))))),
@@ -5899,10 +5899,10 @@ pub fn convert_samples_short(buf_c: c_int, buffer: [*c][*c]c_short, b_offset: c_
             var static: [3][2]c_int = [3][2]c_int{
                 [1]c_int{
                     0,
-                } ++ [1]c_int{0} ** 1,
+                } ++ @as([1]c_int, @splat(0)),
                 [1]c_int{
                     1,
-                } ++ [1]c_int{0} ** 1,
+                } ++ @as([1]c_int, @splat(0)),
                 [2]c_int{
                     2,
                     4,

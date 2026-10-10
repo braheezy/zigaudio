@@ -510,7 +510,7 @@ test "scale factor functions basic structure" {
     var side_info = sideinfo.SideInfo{};
 
     // Create minimal bits reader with empty data
-    const test_data = [_]u8{0} ** 100;
+    const test_data = @as([100]u8, @splat(0));
     var bit_reader = bits.Bits.init(allocator, &test_data);
     defer bit_reader.vec.deinit();
 
@@ -538,7 +538,7 @@ test "readHuffman function basic structure" {
     side_info.part2_3_length[0][0] = 0; // No data to decode
 
     // Create minimal bits reader with empty data
-    const test_data = [_]u8{0} ** 100;
+    const test_data = @as([100]u8, @splat(0));
     var bit_reader = bits.Bits.init(allocator, &test_data);
     defer bit_reader.vec.deinit();
 
@@ -568,7 +568,7 @@ test "readFull function basic structure" {
     var side_info = sideinfo.SideInfo{};
 
     // Create minimal reader with empty data
-    const test_data = [_]u8{0} ** 100;
+    const test_data = @as([100]u8, @splat(0));
     var reader_instance = std.Io.Reader.fixed(&test_data);
     const reader = &reader_instance;
 
@@ -582,7 +582,7 @@ test "read function basic structure" {
     const allocator = testing.allocator;
 
     // Create minimal reader with insufficient data
-    const test_data = [_]u8{0} ** 10;
+    const test_data = @as([10]u8, @splat(0));
     var reader_instance = std.Io.Reader.fixed(&test_data);
     const reader = &reader_instance;
 

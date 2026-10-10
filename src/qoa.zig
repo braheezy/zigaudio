@@ -538,7 +538,7 @@ pub fn encodeToFile(file: std.Io.File, io: std.Io, audio: *const api.Audio) api.
 
     var frame_start: usize = 0;
     while (frame_start < total_frames) : (frame_start += frame_len) {
-        var prev_scalefactor: [max_channels]i32 = [_]i32{0} ** max_channels;
+        var prev_scalefactor: [max_channels]i32 = @as([max_channels]i32, @splat(0));
         const remaining: usize = total_frames - frame_start;
         const this_frame_len: usize = if (remaining < frame_len) remaining else frame_len;
         const slices: usize = (this_frame_len + slice_len - 1) / slice_len;
@@ -670,7 +670,7 @@ pub fn encode(writer: *std.Io.Writer, audio: *const api.Audio) api.WriteError!vo
 
     var frame_start: usize = 0;
     while (frame_start < total_frames) : (frame_start += frame_len) {
-        var prev_scalefactor: [max_channels]i32 = [_]i32{0} ** max_channels;
+        var prev_scalefactor: [max_channels]i32 = @as([max_channels]i32, @splat(0));
         const remaining: usize = total_frames - frame_start;
         const this_frame_len: usize = if (remaining < frame_len) remaining else frame_len;
         const slices: usize = (this_frame_len + slice_len - 1) / slice_len;

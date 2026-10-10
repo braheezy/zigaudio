@@ -14,11 +14,11 @@ pub const Subband = struct {
     // Window buffer [2][512]i32
     x: [2][HAN_SIZE]i32 = undefined,
     // Offset for circular buffer [2]usize
-    off: [2]usize = .{0} ** 2,
+    off: [2]usize = @splat(0),
 
     pub fn init(self: *Subband) void {
         self.x = std.mem.zeroes([2][HAN_SIZE]i32);
-        self.off = .{0} ** 2;
+        self.off = @splat(0);
         // Calculate analysis filterbank coefficients
         var i: usize = 0;
         while (i < SUBBAND_LIMIT) : (i += 1) {
@@ -129,7 +129,7 @@ test "Window filter subband" {
     var subband = Subband{};
     subband.init();
 
-    var buffer_data = [_]i16{1000} ** 64;
+    var buffer_data = @as([64]i16, @splat(1000));
     var buffer_pos: usize = 0;
     var s: [SUBBAND_LIMIT]i32 = undefined;
 
